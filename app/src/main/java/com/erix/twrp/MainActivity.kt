@@ -22,6 +22,9 @@ class MainActivity : AppCompatActivity() {
         b = ActivityMainBinding.inflate(layoutInflater)
         setContentView(b.root)
 
+        // v50: aktifkan deteksi USB ADB
+        com.erix.twrp.adb.AdbDeviceWatcher.start(applicationContext)
+
         lifecycleScope.launch {
             DebugLogger.logs.collect { b.tvLog.text = it }
         }
@@ -89,6 +92,6 @@ class MainActivity : AppCompatActivity() {
         DebugLogger.log("ERIX v49 siap")
         DebugLogger.log("Adapter protokol Bugjaeger ditambahkan")
         DebugLogger.log("Endpoint diagnostik: 127.0.0.1:5038")
-        DebugLogger.log("USB bridge belum digabung dengan jalur TCP")
+        DebugLogger.log("USB watcher diaktifkan; TCP Bugjaeger tetap jalur terpisah")
     }
 }

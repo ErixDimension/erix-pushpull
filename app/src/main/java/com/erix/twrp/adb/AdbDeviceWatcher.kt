@@ -50,9 +50,45 @@ object AdbDeviceWatcher {
             addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
             addAction(ACTION_USB_PERM)
         }
+        DebugLogger.log("[USB] Watcher aktif; memindai perangkat yang sudah terhubung")
+        scanConnectedDevices()
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
             context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
         else context.registerReceiver(receiver, filter)
+    }
+
+    private fun scanConnectedDevices() {
+        val manager = usbManager ?: return
+        val devices = manager.deviceList.values.toList()
+
+        DebugLogger.log("[USB] Jumlah perangkat USB: ${devices.size}")
+
+        if (devices.isEmpty()) {
+            DebugLogger.setStatus("Menunggu perangkat USB OTG...")
+            return
+        }
+
+        for (device in devices) {
+            DebugLogger.log(
+                "[USB] ${device.deviceName} VID=${device.vendorId} PID=${device.productId}"
+            )
+
+            for (i in 0 until device.interfaceCount) {
+                val intf = device.getInterface(i)
+                DebugLogger.log(
+                    "[USB] Interface $i: class=${intf.interfaceClass}, " +
+                    "subclass=${intf.interfaceSubclass}, protocol=${intf.interfaceProtocol}"
+                )
+            }
+
+            if (isAdbDevice(device)) {
+                DebugLogger.log("[USB] Interface ADB ditemukan")
+                requestPermission(device)
+            } else {
+                DebugLogger.log("[USB] Interface ADB tidak ditemukan pada perangkat ini")
+            }
+        }
     }
 
     private fun getDevice(intent: Intent): UsbDevice? =
