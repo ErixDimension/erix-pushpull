@@ -5,7 +5,7 @@ package.domain = org.erix
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,ttf,so
 version = 1.0
-requirements = python3==3.11.9,hostpython3==3.11.9,kivy==2.3.1,pyjnius==1.6.1,requests==2.31.0,charset-normalizer<3.0,idna==3.6,urllib3==2.2.1,certifi==2024.2.2
+requirements = python3,kivy==2.3.1,pyjnius==1.7.0,cython<3.2,requests==2.31.0,charset-normalizer<3.0,idna==3.6,urllib3==2.2.1,certifi==2024.2.2
 source.include_patterns = assets/adb,assets/lib/*
 orientation = portrait
 android.permissions = INTERNET,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,MANAGE_EXTERNAL_STORAGE
