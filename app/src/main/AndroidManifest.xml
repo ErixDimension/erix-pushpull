@@ -8,7 +8,7 @@
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-feature android:name="android.hardware.usb.host" android:required="true"/>
-    <application android:allowBackup="true" android:icon="@mipmap/ic_launcher" android:label="ERIX TWRP" android:theme="@style/Theme.Material3.Dark.NoActionBar">
+    <application android:allowBackup="true" android:icon="@android:drawable/sym_def_app_icon" android:label="ERIX TWRP" android:theme="@style/Theme.ErixTwrp">
         <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/>

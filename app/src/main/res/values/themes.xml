@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Menggunakan Theme bawaan Android agar tidak perlu dependensi Material3 penuh -->
+    <style name="Theme.ErixTwrp" parent="android:Theme.Material.NoActionBar">
+        <item name="android:colorPrimary">#00E5FF</item>
+        <item name="android:colorPrimaryDark">#0B0F14</item>
+        <item name="android:colorAccent">#00E5FF</item>
+        <item name="android:windowBackground">#0B0F14</item>
+    </style>
+</resources>
