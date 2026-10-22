@@ -6,7 +6,7 @@ import android.hardware.usb.*
 import android.os.Build
 import android.widget.Toast
 import com.flyfishxu.kadb.Kadb
-import com.flyfishxu.kadb.usb.KadbUsb
+import com.flyfishxu.kadb.transport.usb.KadbUsb // PERBAIKAN IMPORT
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.*
 
@@ -82,7 +82,6 @@ object AdbDeviceWatcher {
 
     private fun connectKadb(device: UsbDevice) {
         try {
-            // KadbUsb.create membutuhkan Context dan UsbDevice
             val kadbInstance = KadbUsb.create(appContext!!, device)
             _kadb.value = kadbInstance
             currentUsbDevice = device
