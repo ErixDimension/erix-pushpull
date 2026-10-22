@@ -52,7 +52,8 @@ object AdbDeviceWatcher {
                 val bridge = AdbUsbBridge(conn, fi, fo, AdbCrypto())
                 bridge.connect()
                 currentUsbDevice = device
-                DebugLogger.log("✓ Terhubung & Server Siap!")
+                DebugLogger.log("✓ Bridge v45 berhasil connect!")
+                DebugLogger.setStatus("✓ Terhubung!")
                 // JALANKAN MINI SERVER!
                 ErixAdbServer(bridge).start()
             } catch (e: Exception) { DebugLogger.log("❌ Gagal: ${e.message}") }
