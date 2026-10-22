@@ -32,10 +32,10 @@ class MainActivity : AppCompatActivity() {
         AdbDeviceWatcher.start(this)
 
         scope.launch {
-            AdbDeviceWatcher.transport.collect { dadb ->
-                if (dadb != null) {
+            AdbDeviceWatcher.transport.collect { transport ->
+                if (transport != null) {
                     val serial = AdbDeviceWatcher.currentUsbDevice?.deviceName ?: "-"
-                    AdbRuntime.active = dadb to serial
+                    AdbRuntime.active = transport to serial
                     b.tvDevice.text = "✓ Terhubung: ${AdbDeviceWatcher.currentUsbDevice?.deviceName ?: "-"}"
                 } else {
                     AdbRuntime.active = null

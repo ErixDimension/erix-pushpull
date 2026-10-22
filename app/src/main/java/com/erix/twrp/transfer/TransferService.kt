@@ -5,15 +5,15 @@ import android.os.*
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.*
 import com.erix.twrp.adb.AdbManager
+import com.erix.twrp.adb.AdbUsbTransport
 import com.erix.twrp.storage.LocalStorageManager
 import com.erix.twrp.storage.RemoteStorageManager
-import com.flyfishxu.kadb.Kadb
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
 // Runtime object menyimpan instance Dadb yang aktif
 object AdbRuntime { 
-    @Volatile var active: Pair<Kadb, String>? = null 
+    @Volatile var active: Pair<AdbUsbTransport, String>? = null 
 }
 
 class TransferService : LifecycleService() {
