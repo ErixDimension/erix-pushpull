@@ -34,8 +34,9 @@ class MainActivity : AppCompatActivity() {
         scope.launch {
             AdbDeviceWatcher.dadb.collect { dadb ->
                 if (dadb != null) {
-                    AdbRuntime.active = dadb to (dadb.serial ?: "-")
-                    b.tvDevice.text = "✓ Terhubung: ${dadb.serial}"
+                    val serial = AdbDeviceWatcher.currentUsbDevice?.deviceName ?: "-"
+                    AdbRuntime.active = dadb to serial
+                    b.tvDevice.text = "✓ Terhubung: ${AdbDeviceWatcher.currentUsbDevice?.deviceName ?: "-"}"
                 } else {
                     AdbRuntime.active = null
                     b.tvDevice.text = "Tidak ada device"
@@ -58,7 +59,7 @@ class MainActivity : AppCompatActivity() {
         b.btnRefresh.setOnClickListener {
             b.tvDevice.text = "Refreshing..."
             AdbDeviceWatcher.dadb.value?.let {
-                b.tvDevice.text = "✓ Terhubung: ${it.serial}"
+                b.tvDevice.text = "✓ Terhubung: ${AdbDeviceWatcher.currentUsbDevice?.deviceName ?: "-"}"
             }
         }
 

@@ -18,10 +18,19 @@ class AdbManager(private val context: Context, private val dadb: Dadb) {
     suspend fun remoteIsDir(path: String): Boolean = withContext(Dispatchers.IO) {
         "Y" in shell("[ -d ${q(path)} ] && echo Y || echo N")
     }
+    
+    suspend fun remoteExists(path: String): Boolean = withContext(Dispatchers.IO) {
+        "Y" in shell("[ -e ${q(path)} ] && echo Y || echo N")
+    }
 
     suspend fun remoteSizeOrDirSize(path: String): Long = withContext(Dispatchers.IO) {
         shell("if [ -d ${q(path)} ]; then du -sb ${q(path)} 2>/dev/null | cut -f1; elif [ -f ${q(path)} ]; then stat -c %s ${q(path)} 2>/dev/null; else echo 0; fi")
             .lines().mapNotNull { it.trim().toLongOrNull() }.firstOrNull() ?: 0L
+    }
+    
+    suspend fun remoteFreeBytes(path: String): Long = withContext(Dispatchers.IO) {
+        val n = shell("df -k ${q(path)} 2>/dev/null | tail -1").split(Regex("\\s+")).mapNotNull { it.toLongOrNull() }
+        if (n.size >= 3) n[2] * 1024 else 0L
     }
 
     data class RemoteEntry(val name: String, val path: String, val isDir: Boolean, val size: Long)
@@ -34,8 +43,7 @@ class AdbManager(private val context: Context, private val dadb: Dadb) {
             if (line.isBlank() || line.startsWith("total")) continue
             val parts = line.trim().split(Regex("\\s+"))
             if (parts.size < 7) continue
-            val perms = parts[0]
-            val isDir = perms.startsWith("d")
+            val isDir = parts[0].startsWith("d")
             val size = if (!isDir) parts[4].toLongOrNull() ?: 0L else 0L
             val name = if (parts.size >= 8) parts.subList(7, parts.size).joinToString(" ") else parts.last()
             if (name.isEmpty()) continue
@@ -55,18 +63,14 @@ class AdbManager(private val context: Context, private val dadb: Dadb) {
         try {
             dadb.push(localFile, remotePath)
             true
-        } catch (e: Exception) {
-            false
-        }
+        } catch (e: Exception) { false }
     }
 
     suspend fun pull(remotePath: String, localFile: File): Boolean = withContext(Dispatchers.IO) {
         try {
             dadb.pull(remotePath, localFile)
             true
-        } catch (e: Exception) {
-            false
-        }
+        } catch (e: Exception) { false }
     }
 
     private fun q(s: String): String = "'" + s.replace("'", "'\\''") + "'"
