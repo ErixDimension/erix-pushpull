@@ -5,6 +5,7 @@ import java.security.interfaces.RSAPublicKey
 import java.math.BigInteger
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+
 class AdbCrypto(private val alias: String = "erix_adb_key") {
     private val ks: KeyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
     private val keyPair: KeyPair by lazy {

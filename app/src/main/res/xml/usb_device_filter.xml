@@ -1,10 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <usb-device class="255" subclass="66" protocol="1" />
-    <!-- Fallback untuk beberapa TWRP yang tidak menyertakan class 255 -->
-    <usb-device vendor-id="10007" /> 
-    <usb-device vendor-id="6353" />
-    <usb-device vendor-id="1478" />
-    <usb-device vendor-id="3725" />
-    <usb-device vendor-id="10890" />
 </resources>
