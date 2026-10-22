@@ -34,15 +34,13 @@ class AdbCrypto(private val alias: String = "erix_adb_key") {
         val nBytes = modulusBytes.size
         val nWords = (nBytes + 3) / 4
         val modPadded = ByteArray(nWords * 4)
-        for (i in 0 until nBytes) modPadded[i] = modulusBytes[nBytes - 1 - i] // Little-endian
+        for (i in 0 until nBytes) modPadded[i] = modulusBytes[nBytes - 1 - i]
 
-        // n0inv = -1 / n[0] mod 2^32
         val n0 = (modPadded[0].toLong() and 0xFF) or ((modPadded[1].toLong() and 0xFF) shl 8) or ((modPadded[2].toLong() and 0xFF) shl 16) or ((modPadded[3].toLong() and 0xFF) shl 24)
         var x = n0
         for (i in 0 until 5) { x *= (2 - n0 * x) }
         val n0inv = (-x).toInt()
 
-        // rr = R^2 mod N
         val bigN = BigInteger(1, modulusBytes)
         val bigR = BigInteger.ONE.shiftLeft(nWords * 32)
         var rrBytes = bigR.multiply(bigR).mod(bigN).toByteArray()
