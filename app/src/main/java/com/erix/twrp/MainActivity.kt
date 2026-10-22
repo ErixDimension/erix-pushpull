@@ -1,5 +1,8 @@
 package com.erix.twrp
 import android.Manifest
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -11,7 +14,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import com.erix.twrp.adb.AdbDeviceWatcher
 import com.erix.twrp.databinding.ActivityMainBinding
-import com.erix.twrp.ui.BrowserActivity
+import com.erix.twrp.util.DebugLogger
 import kotlinx.coroutines.*
 
 class MainActivity : AppCompatActivity() {
@@ -20,19 +23,29 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState); b = ActivityMainBinding.inflate(layoutInflater); setContentView(b.root)
-        requestBasePermissions(); AdbDeviceWatcher.start(this)
+        requestBasePermissions(); DebugLogger.log("App dibuka."); AdbDeviceWatcher.start(this)
         
+        scope.launch {
+            DebugLogger.logs.collect { logText ->
+                b.tvDebugLog.text = logText
+                b.scrollLog.post { b.scrollLog.fullScroll(android.view.View.FOCUS_DOWN) }
+            }
+        }
         scope.launch {
             AdbDeviceWatcher.transport.collect { t ->
                 if (t != null) b.tvDevice.text = "✓ Terhubung: ${AdbDeviceWatcher.currentUsbDevice?.deviceName ?: "-"}"
                 else b.tvDevice.text = "Tidak ada device"
             }
         }
-        b.btnPush.setOnClickListener { startActivity(Intent(this, BrowserActivity::class.java).apply { putExtra("side", "LOCAL"); putExtra("start_path", "/storage/emulated/0") }) }
-        b.btnPull.setOnClickListener { if (AdbDeviceWatcher.transport.value == null) Toast.makeText(this, "Colok device B dulu", Toast.LENGTH_SHORT).show() else startActivity(Intent(this, BrowserActivity::class.java).apply { putExtra("side", "REMOTE"); putExtra("start_path", "/sdcard/") }) }
+        
+        b.btnCopy.setOnClickListener {
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            clipboard.setPrimaryClip(ClipData.newPlainText("ERIX Log", b.tvDebugLog.text))
+            Toast.makeText(this, "Log berhasil dicopy!", Toast.LENGTH_SHORT).show()
+        }
+        b.btnClear.setOnClickListener { DebugLogger.clear() }
         b.btnExit.setOnClickListener { finish() }
     }
-
     private fun requestBasePermissions() {
         val perms = mutableListOf<String>()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) perms.add(Manifest.permission.POST_NOTIFICATIONS)

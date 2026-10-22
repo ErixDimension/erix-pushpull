@@ -1,8 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="24dp" android:background="#0B0F14">
-    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="✦ ERIX TWRP ✦" android:textColor="#00E5FF" android:textSize="28sp" android:gravity="center" android:textStyle="bold"/>
-    <TextView android:id="@+id/tvDevice" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Menunggu device..." android:textColor="#FFFFFF" android:textSize="14sp" android:gravity="center" android:paddingTop="8dp" android:paddingBottom="32dp"/>
-    <Button android:id="@+id/btnPush" android:layout_width="match_parent" android:layout_height="72dp" android:text="📤 PUSH (A → B)" android:textSize="18sp" android:layout_marginBottom="12dp"/>
-    <Button android:id="@+id/btnPull" android:layout_width="match_parent" android:layout_height="72dp" android:text="📥 PULL (B → A)" android:textSize="18sp" android:layout_marginBottom="12dp"/>
-    <Button android:id="@+id/btnExit" android:layout_width="match_parent" android:layout_height="56dp" android:text="❌ Keluar"/>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="12dp" android:background="#0B0F14">
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="✦ ERIX USB DEBUGGER ✦" android:textColor="#00E5FF" android:textSize="20sp" android:gravity="center" android:textStyle="bold"/>
+    <TextView android:id="@+id/tvDevice" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Menunggu device..." android:textColor="#FFFFFF" android:textSize="12sp" android:gravity="center" android:paddingTop="4dp" android:paddingBottom="8dp"/>
+    
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginBottom="8dp">
+        <Button android:id="@+id/btnPush" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1" android:text="PUSH" android:layout_marginEnd="4dp"/>
+        <Button android:id="@+id/btnPull" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1" android:text="PULL" android:layout_marginStart="4dp"/>
+    </LinearLayout>
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Live Console (Kabel ADB):" android:textColor="#AAAAAA" android:textSize="12sp"/>
+        <Button android:id="@+id/btnClear" android:layout_width="wrap_content" android:layout_height="36dp" android:text="Clear" android:textSize="10sp" android:padding="4dp"/>
+        <Button android:id="@+id/btnCopy" android:layout_width="wrap_content" android:layout_height="36dp" android:text="Copy Log" android:textSize="10sp" android:padding="4dp" android:layout_marginStart="4dp"/>
+    </LinearLayout>
+
+    <ScrollView android:id="@+id/scrollLog" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:background="#111820" android:padding="8dp" android:layout_marginTop="4dp" android:layout_marginBottom="8dp">
+        <TextView android:id="@+id/tvDebugLog" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#00FF00" android:textSize="10sp" android:fontFamily="monospace" android:text="Menunggu kabel..."/>
+    </ScrollView>
+
+    <Button android:id="@+id/btnExit" android:layout_width="match_parent" android:layout_height="48dp" android:text="❌ Keluar"/>
 </LinearLayout>
