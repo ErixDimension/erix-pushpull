@@ -20,25 +20,40 @@ class BrowserActivity : AppCompatActivity() {
         const val EXTRA_SIDE = "side"; const val EXTRA_PICK_MODE = "pick_mode"; const val EXTRA_TITLE = "title"; const val EXTRA_START_PATH = "start_path"; const val EXTRA_FLOOR = "floor"; const val EXTRA_ACTION = "action"
         var pendingSource: StorageItem? = null; var pendingSourceSide: String? = null; var pendingAction: String? = null
     }
-    private lateinit var b: ActivityBrowserBinding; private lateinit var adapter: BrowserAdapter; private lateinit var local: LocalStorageManager; private lateinit var remote: RemoteStorageManager
+    private lateinit var b: ActivityBrowserBinding; private lateinit var adapter: BrowserAdapter; private lateinit var local: LocalStorageManager; private var remote: RemoteStorageManager? = null
     private var isLocal = true; private var pickMode = "ITEM"; private var action = ""; private var path = "/storage/emulated/0"; private var floor = "/storage/emulated/0"; private var items: List<StorageItem> = emptyList(); private var cursor = 0
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState); b = ActivityBrowserBinding.inflate(layoutInflater); setContentView(b.root)
         isLocal = intent.getStringExtra(EXTRA_SIDE) == "LOCAL"; pickMode = intent.getStringExtra(EXTRA_PICK_MODE) ?: "ITEM"; action = intent.getStringExtra(EXTRA_ACTION) ?: ""
         path = intent.getStringExtra(EXTRA_START_PATH) ?: if (isLocal) "/storage/emulated/0" else "/sdcard/"; floor = intent.getStringExtra(EXTRA_FLOOR) ?: path
         local = LocalStorageManager(this); b.tvTitle.text = intent.getStringExtra(EXTRA_TITLE)
-        val active = AdbRuntime.active; if (active != null) { remote = RemoteStorageManager(AdbManager(this, active.first)) } else if (!isLocal) { finish(); return } else { remote = RemoteStorageManager(AdbManager(this, AdbUsbTransportMock())) }
+        
+        // Perbaikan: Hanya inisialisasi remote jika bukan local dan device terhubung
+        val active = AdbRuntime.active
+        if (active != null) {
+            remote = RemoteStorageManager(AdbManager(this, active.first))
+        } else if (!isLocal) {
+            finish(); return
+        }
+        
         adapter = BrowserAdapter(items) { onItemClick(it) }; b.rvItems.layoutManager = LinearLayoutManager(this); b.rvItems.adapter = adapter
         b.btnUp.setOnClickListener { moveCursor(-1) }; b.btnDown.setOnClickListener { moveCursor(1) }; b.btnSelect.setOnClickListener { onItemClick(cursor) }; b.btnBack.setOnClickListener { navigateBack() }; b.btnSelectMode.setOnClickListener { openSelectMode() }; b.btnBasket.setOnClickListener { openBasket() }; b.btnNewFolder.setOnClickListener { doNewFolder() }; b.btnExtract.setOnClickListener { doExtract(items[cursor]) }
         load()
     }
-    private fun load() { lifecycleScope.launch { try { items = if (isLocal) local.list(path) else remote.list(path); cursor = cursor.coerceIn(0, maxOf(0, items.size - 1)); adapter.setItems(items); adapter.setCursor(cursor); b.tvPath.text = path } catch (e: Exception) { Toast.makeText(this@BrowserActivity, "Load error: ${e.message}", Toast.LENGTH_SHORT).show() } } }
+    private fun load() { 
+        lifecycleScope.launch { 
+            try { 
+                items = if (isLocal) local.list(path) else remote?.list(path) ?: emptyList()
+                cursor = cursor.coerceIn(0, maxOf(0, items.size - 1)); adapter.setItems(items); adapter.setCursor(cursor); b.tvPath.text = path 
+            } catch (e: Exception) { Toast.makeText(this@BrowserActivity, "Load error: ${e.message}", Toast.LENGTH_SHORT).show() } 
+        } 
+    }
     private fun moveCursor(d: Int) { if (items.isEmpty()) return; cursor = ((cursor + d) % items.size + items.size) % items.size; adapter.setCursor(cursor); b.rvItems.scrollToPosition(cursor) }
     private fun onItemClick(idx: Int) { val it = items.getOrNull(idx) ?: return; if (it.isDir) { path = it.path.trimEnd('/'); load(); return }; if (pickMode == "DIR") { Toast.makeText(this, "Bukan folder", Toast.LENGTH_SHORT).show(); return }; finishWithItem(it) }
     private fun navigateBack() { val p = path.trimEnd('/'); if (p == floor.trimEnd('/')) { finish(); return }; path = File(p).parent ?: "/"; load() }
     private fun openBasket() { if (BasketManager.items.isEmpty()) Toast.makeText(this, "Kosong", Toast.LENGTH_SHORT).show() else startActivity(Intent(this, BasketActivity::class.java)) }
     private fun openSelectMode() { Toast.makeText(this, "Multi-select clicked", Toast.LENGTH_SHORT).show() }
-    private fun doNewFolder() { val input = EditText(this).apply { hint = "Nama" }; AlertDialog.Builder(this).setTitle("Folder Baru").setView(input).setPositiveButton("Buat") { _, _ -> lifecycleScope.launch { if (isLocal) local.mkdirs(path.trimEnd('/') + "/" + input.text) else remote.mkdirs(path.trimEnd('/') + "/" + input.text); load() } }.show() }
+    private fun doNewFolder() { val input = EditText(this).apply { hint = "Nama" }; AlertDialog.Builder(this).setTitle("Folder Baru").setView(input).setPositiveButton("Buat") { _, _ -> lifecycleScope.launch { if (isLocal) local.mkdirs(path.trimEnd('/') + "/" + input.text) else remote?.mkdirs(path.trimEnd('/') + "/" + input.text); load() } }.show() }
     private fun doExtract(it: StorageItem) { Toast.makeText(this, "Extract: ${it.name}", Toast.LENGTH_SHORT).show() }
     private fun finishWithItem(it: StorageItem) {
         pendingSource = it; pendingSourceSide = if (isLocal) "LOCAL" else "REMOTE"; pendingAction = action; finish()
@@ -50,4 +65,3 @@ class BrowserActivity : AppCompatActivity() {
         }
     }
 }
-class AdbUsbTransportMock : com.erix.twrp.adb.AdbUsbTransport(null as android.hardware.usb.UsbManager, null as android.hardware.usb.UsbDevice, null as android.hardware.usb.UsbDeviceConnection, null as com.erix.twrp.adb.AdbCrypto) { override fun close() {} }
