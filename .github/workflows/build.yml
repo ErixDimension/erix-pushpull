@@ -29,51 +29,51 @@ jobs:
             libtool libtool-bin libltdl-dev \
             pkg-config m4 bison flex gettext \
             zlib1g-dev libncurses5-dev libncursesw5-dev \
-            libtinfo5 libtinfo6 cmake libffi-dev libssl-dev
+            libtinfo5 libtinfo6 cmake \
+            libffi-dev libssl-dev libsqlite3-dev sqlite3
 
       - name: Verify toolchain
         run: |
-          echo "=== libtoolize ==="
           which libtoolize && libtoolize --version | head -1
-          echo "=== autoreconf ==="
           which autoreconf && autoreconf --version | head -1
-          echo "=== autoconf ==="
-          which autoconf && autoconf --version | head -1
-          echo "=== aclocal ==="
-          which aclocal && aclocal --version | head -1
+          which sqlite3 && sqlite3 --version
 
-      - name: Install buildozer (pinned stable)
+      - name: Install buildozer (Cython 3.0.11)
         run: |
           python -m pip install --upgrade pip
-          pip install buildozer==1.5.0 cython==0.29.36 virtualenv
+          pip install buildozer==1.5.0 cython==3.0.11 virtualenv
 
-      - name: Cache buildozer global
+      - name: Verify Cython version
+        run: |
+          python -c "import Cython; print('Cython:', Cython.__version__)"
+          python -c "import buildozer; print('Buildozer OK')"
+
+      - name: Cache buildozer global (v8)
         uses: actions/cache@v4
         with:
           path: ~/.buildozer
-          key: bz-global-7a-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+          key: bz-global-8-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
 
-      - name: Cache buildozer project
+      - name: Cache buildozer project (v8)
         uses: actions/cache@v4
         with:
           path: .buildozer
-          key: bz-proj-7a-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+          key: bz-proj-8-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
 
-      - name: Clean stale builds
+      - name: Deep clean stale builds
         run: |
-          rm -rf .buildozer/android/platform/build-*/build/libffi* 2>/dev/null || true
-          rm -rf .buildozer/android/platform/build-*/build/libffi_* 2>/dev/null || true
-          echo "Cleaned stale libffi"
+          rm -rf .buildozer/android/platform/build-*/build/kivy* 2>/dev/null || true
+          rm -rf .buildozer/android/platform/build-*/build/pyjnius* 2>/dev/null || true
+          rm -rf .buildozer/android/platform/build-*/build/python3* 2>/dev/null || true
+          rm -rf .buildozer/android/platform/build-*/dists 2>/dev/null || true
+          echo "Deep clean done"
 
       - name: Build APK
         env:
           LIBTOOLIZE: libtoolize
           ACLOCAL_PATH: /usr/share/aclocal
-          LT_SYS_LIBRARY_PATH: /lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu
           AUTORECONF: autoreconf
-          LIBFFI_VERSION: "3.4.2"
-          LDFLAGS: "-L/lib/x86_64-linux-gnu -L/usr/lib/x86_64-linux-gnu"
-          CPPFLAGS: "-I/usr/include -I/usr/include/x86_64-linux-gnu"
+          CYTHON_VERSION: "3.0.11"
         run: |
           set -o pipefail
           yes | buildozer -v android debug 2>&1 | tee build.log
@@ -81,14 +81,14 @@ jobs:
       - name: Debug artifacts
         if: always()
         run: |
-          echo "=== bin/ contents ==="
+          echo "=== bin/ ==="
           ls -la bin/ 2>/dev/null || echo "no bin/"
           echo ""
-          echo "=== find all APK ==="
+          echo "=== APK anywhere ==="
           find . -name "*.apk" -type f 2>/dev/null || echo "no APK"
           echo ""
           echo "=== build result ==="
-          grep -E "Command failed|Android packaging done|BUILD SUCCESSFUL|BUILD FAILED" build.log 2>/dev/null | tail -10
+          grep -E "Command failed|Android packaging done|BUILD SUCCESSFUL|BUILD FAILED|error:" build.log 2>/dev/null | tail -10
 
       - name: Upload APK
         if: success()
