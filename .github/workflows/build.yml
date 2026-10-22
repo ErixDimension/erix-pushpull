@@ -25,7 +25,9 @@ jobs:
           sudo apt-get install -y \
             git zip unzip \
             openjdk-17-jdk-headless \
-            autoconf libtool pkg-config \
+            autoconf automake autoconf-archive \
+            libtool libtool-bin libltdl-dev \
+            pkg-config \
             zlib1g-dev libncurses5-dev libncursesw5-dev \
             libtinfo6 cmake libffi-dev libssl-dev
 
@@ -46,20 +48,47 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .buildozer
-          key: buildozer-project-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+          key: buildozer-project-v3-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
           restore-keys: |
-            buildozer-project-${{ runner.os }}-
+            buildozer-project-v3-${{ runner.os }}-
+
+      - name: Clean stale libffi build (fix retry)
+        run: |
+          rm -rf .buildozer/android/platform/build-*/build/libffi 2>/dev/null || true
+          rm -rf .buildozer/android/platform/build-*/build/libffi_* 2>/dev/null || true
+          echo "=== Cleaned stale libffi builds ==="
+          ls -la .buildozer/android/platform/ 2>/dev/null | head -5 || echo "(empty)"
 
       - name: Build APK with buildozer
         run: |
+          set -o pipefail
+          export ACLOCAL_PATH=/usr/share/aclocal
           yes | buildozer -v android debug 2>&1 | tee build.log
+
+      - name: Debug - list build artifacts
+        if: always()
+        run: |
+          echo "=== Files in bin/ ==="
+          ls -la bin/ 2>/dev/null || echo "bin/ not found"
+          echo ""
+          echo "=== APK anywhere ==="
+          find . -name "*.apk" -type f 2>/dev/null || echo "no APK found"
+          echo ""
+          echo "=== Dist directory ==="
+          find .buildozer/android/platform/build-*/dists -type f -name "*.apk" 2>/dev/null || echo "no dists APK"
+          echo ""
+          echo "=== Build status from log ==="
+          grep -E "Command failed|Android packaging done|BUILD SUCCESSFUL|BUILD FAILED" build.log 2>/dev/null | tail -10 || true
 
       - name: Upload APK artifact
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: erix-apk
-          path: bin/*.apk
+          path: |
+            bin/*.apk
+            .buildozer/android/platform/build-*/dists/*/bin/*.apk
+          if-no-files-found: error
           retention-days: 30
 
       - name: Upload build log (on failure)
