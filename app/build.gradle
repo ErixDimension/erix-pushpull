@@ -2,7 +2,7 @@ plugins { id 'com.android.application'; id 'org.jetbrains.kotlin.android' }
 android {
     namespace 'com.erix.twrp'
     compileSdk 36
-    defaultConfig { applicationId "com.erix.twrp"; minSdk 26; targetSdk 36; versionCode 20; versionName "1.0.20" }
+    defaultConfig { applicationId "com.erix.twrp"; minSdk 26; targetSdk 36; versionCode 25; versionName "1.0.25" }
     buildTypes { 
         debug { signingConfig signingConfigs.debug }
         release { minifyEnabled false } 
