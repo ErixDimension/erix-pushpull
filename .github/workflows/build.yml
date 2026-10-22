@@ -8,72 +8,45 @@ on:
 jobs:
   build-android:
     runs-on: ubuntu-22.04
+    container:
+      image: kivy/buildozer:latest
+      options: --user root
     timeout-minutes: 120
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install system dependencies
+      - name: Verify container toolchain
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            git zip unzip \
-            openjdk-17-jdk-headless \
-            autoconf automake autoconf-archive \
-            libtool libtool-bin libltdl-dev \
-            pkg-config m4 bison flex gettext \
-            zlib1g-dev libncurses5-dev libncursesw5-dev \
-            libtinfo5 libtinfo6 cmake \
-            libffi-dev libssl-dev libsqlite3-dev sqlite3
-
-      - name: Verify toolchain
-        run: |
+          echo "=== Python ==="
+          python3 --version
+          echo "=== Cython ==="
+          python3 -c "import Cython; print('Cython:', Cython.__version__)" 2>/dev/null || echo "n/a"
+          echo "=== Buildozer ==="
+          buildozer --version 2>&1 | head -1
+          echo "=== Java ==="
+          java -version 2>&1 | head -1
+          echo "=== libtoolize ==="
           which libtoolize && libtoolize --version | head -1
-          which autoreconf && autoreconf --version | head -1
-          which sqlite3 && sqlite3 --version
+          echo "=== autoconf ==="
+          which autoconf && autoconf --version | head -1
+          echo "=== Disk ==="
+          df -h / | tail -1
 
-      - name: Install buildozer (Cython 3.0.11)
-        run: |
-          python -m pip install --upgrade pip
-          pip install buildozer==1.5.0 cython==3.0.11 virtualenv
-
-      - name: Verify Cython version
-        run: |
-          python -c "import Cython; print('Cython:', Cython.__version__)"
-          python -c "import buildozer; print('Buildozer OK')"
-
-      - name: Cache buildozer global (v8)
+      - name: Cache buildozer global
         uses: actions/cache@v4
         with:
-          path: ~/.buildozer
-          key: bz-global-8-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+          path: /root/.buildozer
+          key: docker-bz-global-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
 
-      - name: Cache buildozer project (v8)
+      - name: Cache buildozer project
         uses: actions/cache@v4
         with:
           path: .buildozer
-          key: bz-proj-8-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
-
-      - name: Deep clean stale builds
-        run: |
-          rm -rf .buildozer/android/platform/build-*/build/kivy* 2>/dev/null || true
-          rm -rf .buildozer/android/platform/build-*/build/pyjnius* 2>/dev/null || true
-          rm -rf .buildozer/android/platform/build-*/build/python3* 2>/dev/null || true
-          rm -rf .buildozer/android/platform/build-*/dists 2>/dev/null || true
-          echo "Deep clean done"
+          key: docker-bz-proj-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
 
       - name: Build APK
-        env:
-          LIBTOOLIZE: libtoolize
-          ACLOCAL_PATH: /usr/share/aclocal
-          AUTORECONF: autoreconf
-          CYTHON_VERSION: "3.0.11"
         run: |
           set -o pipefail
           yes | buildozer -v android debug 2>&1 | tee build.log
@@ -84,11 +57,11 @@ jobs:
           echo "=== bin/ ==="
           ls -la bin/ 2>/dev/null || echo "no bin/"
           echo ""
-          echo "=== APK anywhere ==="
+          echo "=== find APK ==="
           find . -name "*.apk" -type f 2>/dev/null || echo "no APK"
           echo ""
           echo "=== build result ==="
-          grep -E "Command failed|Android packaging done|BUILD SUCCESSFUL|BUILD FAILED|error:" build.log 2>/dev/null | tail -10
+          grep -E "Command failed|Android packaging done|BUILD SUCCESSFUL|BUILD FAILED" build.log 2>/dev/null | tail -10
 
       - name: Upload APK
         if: success()
