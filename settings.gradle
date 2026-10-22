@@ -10,7 +10,7 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven { url 'https://jitpack.io' } // <-- KUNCI UTAMA
+        maven { url 'https://jitpack.io' } // Wajib untuk spake2-java
     }
 }
 rootProject.name = "ErixTwrp"
