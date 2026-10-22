@@ -23,7 +23,6 @@ class AdbUsbTransport(
         var adbIntf: UsbInterface? = null
         for (i in 0 until device.interfaceCount) {
             val it = device.getInterface(i)
-            DebugLogger.log("Interface $i: Class=${it.interfaceClass}, Sub=${it.interfaceSubclass}, Proto=${it.interfaceProtocol}")
             if (it.interfaceClass == 0xFF && it.interfaceSubclass == 0x42 && it.interfaceProtocol == 0x01) {
                 adbIntf = it
                 break
@@ -46,26 +45,11 @@ class AdbUsbTransport(
         
         DebugLogger.log("Endpoint IN=${Integer.toHexString(inEp.address)}, OUT=${Integer.toHexString(outEp.address)}")
 
-        var claimed = connection.claimInterface(intf, false)
-        if (!claimed) {
-            DebugLogger.log("Claim(false) gagal, coba force(true)...")
-            claimed = connection.claimInterface(intf, true)
+        // Murni AOSP: Claim interface, tanpa force, tanpa setInterface.
+        if (!connection.claimInterface(intf, true)) {
+            throw IllegalStateException("Gagal klaim interface.")
         }
-        if (!claimed) throw IllegalStateException("Gagal klaim interface.")
         DebugLogger.log("Interface berhasil di-claim.")
-
-        try { connection.setInterface(intf); DebugLogger.log("setInterface OK.") } catch (e: Exception) { DebugLogger.log("setInterface warning: ${e.message}") }
-
-        // MANUAL CLEAR HALT (USB Standard Control Transfer)
-        try {
-            val inRes = connection.controlTransfer(0x02, 0x01, 0x00, inEp.address, null, 0, 500)
-            val outRes = connection.controlTransfer(0x02, 0x01, 0x00, outEp.address, null, 0, 500)
-            DebugLogger.log("Manual clearHalt: IN=$inRes, OUT=$outRes")
-        } catch (e: Exception) {
-            DebugLogger.log("Manual clearHalt warning: ${e.message}")
-        }
-
-        Thread.sleep(200)
     }
 
     private fun write(data: ByteArray) {
@@ -83,23 +67,12 @@ class AdbUsbTransport(
     private fun readExact(buffer: ByteArray, offset: Int, len: Int) {
         var off = offset
         var rem = len
-        var retries = 0
         while (rem > 0) {
             val n = connection.bulkTransfer(inEp, buffer, off, rem, 10000)
-            if (n < 0) {
-                if (retries < 2) {
-                    retries++
-                    DebugLogger.log("USB Read Stall ($n). Retry $retries/2...")
-                    try { connection.controlTransfer(0x02, 0x01, 0x00, inEp.address, null, 0, 500) } catch (_: Exception) {}
-                    Thread.sleep(100)
-                    continue
-                }
-                throw IOException("USB Read Stall: $n")
-            }
+            if (n < 0) throw IOException("USB Read Stall: $n")
             if (n == 0) throw IOException("Read timeout (TWRP diam)")
             off += n
             rem -= n
-            retries = 0
         }
     }
 
@@ -125,9 +98,10 @@ class AdbUsbTransport(
     private fun checksum(p: ByteArray): Int { var s = 0; for (b in p) s += (b.toInt() and 0xFF); return s }
 
     suspend fun connect() = withContext(Dispatchers.IO) {
-        DebugLogger.log("Memulai Handshake ADB...")
+        DebugLogger.log("Memulai Handshake ADB (AOSP Mode)...")
         val banner = "host::erix-apk\u0000".toByteArray()
-        write(encode(Msg(AdbProtocol.A_CNXN, AdbProtocol.A_VERSION_SKIP_CHECKSUM, AdbProtocol.A_MAX_PAYLOAD_V1, banner)))
+        // Gunakan A_VERSION_MIN (0x01000000) yang didukung semua TWRP
+        write(encode(Msg(AdbProtocol.A_CNXN, AdbProtocol.A_VERSION_MIN, AdbProtocol.A_MAX_PAYLOAD_V1, banner)))
         while (true) {
             val m = readMsg()
             when (m.command) {
@@ -137,7 +111,7 @@ class AdbUsbTransport(
                     if (m.arg0 == AdbProtocol.ADB_AUTH_TOKEN) {
                         val sig = crypto.sign(m.payload)
                         if (sig != null) write(encode(Msg(AdbProtocol.A_AUTH, AdbProtocol.ADB_AUTH_SIGNATURE, 0, sig)))
-                        else { write(encode(Msg(AdbProtocol.A_AUTH, AdbProtocol.ADB_AUTH_RSAPUBLICKEY, 0, crypto.publicKeyBytes()))); write(encode(Msg(AdbProtocol.A_CNXN, AdbProtocol.A_VERSION_SKIP_CHECKSUM, maxPayload, banner))) }
+                        else { write(encode(Msg(AdbProtocol.A_AUTH, AdbProtocol.ADB_AUTH_RSAPUBLICKEY, 0, crypto.publicKeyBytes()))); write(encode(Msg(AdbProtocol.A_CNXN, AdbProtocol.A_VERSION_MIN, maxPayload, banner))) }
                     } else throw IllegalStateException("Auth unknown")
                 }
                 else -> throw IllegalStateException("Unexpected: ${Integer.toHexString(m.command)}")
