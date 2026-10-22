@@ -1,5 +1,6 @@
 package com.erix.twrp.adb
 import android.hardware.usb.*
+import android.util.Log
 import kotlinx.coroutines.*
 import java.io.*
 import java.nio.*
@@ -16,13 +17,16 @@ class AdbUsbTransport(private val usbManager: UsbManager, private val device: Us
             if (ep.type == UsbConstants.USB_ENDPOINT_XFER_BULK) { if (ep.direction == UsbConstants.USB_DIR_IN) fi = ep; if (ep.direction == UsbConstants.USB_DIR_OUT) fo = ep } }
         inEp = fi ?: throw IllegalStateException("No IN Endpoint"); outEp = fo ?: throw IllegalStateException("No OUT Endpoint")
     }
-    private fun write(data: ByteArray) { var off = 0; while (off < data.size) { val chunk = minOf(16384, data.size - off); val w = connection.bulkTransfer(outEp, data, off, chunk, 5000); if (w <= 0) throw IOException("Write timeout"); off += w } }
-    private fun readExact(buffer: ByteArray, offset: Int, len: Int) { var off = offset; var rem = len; while (rem > 0) { val n = connection.bulkTransfer(inEp, buffer, off, rem, 15000); if (n <= 0) throw IOException("Read timeout"); off += n; rem -= n } }
+    private fun write(data: ByteArray) {
+        Log.d("ERIX_ADB", "TX: ${data.size} bytes, cmd=${if (data.size >= 4) Integer.toHexString(java.nio.ByteBuffer.wrap(data).order(java.nio.ByteOrder.LITTLE_ENDIAN).int) else "?"}") var off = 0; while (off < data.size) { val chunk = minOf(16384, data.size - off); val w = connection.bulkTransfer(outEp, data, off, chunk, 5000); if (w <= 0) throw IOException("Write timeout"); off += w } }
+    private fun readExact(buffer: ByteArray, offset: Int, len: Int) { var off = offset; var rem = len; while (rem > 0) { val n = connection.bulkTransfer(inEp, buffer, off, rem, 30000); if (n <= 0) throw IOException("Read timeout"); off += n; rem -= n } }
     private data class Msg(val command: Int, val arg0: Int, val arg1: Int, val payload: ByteArray)
     private fun readMsg(): Msg {
+        Log.d("ERIX_ADB", "Menunggu header (24 bytes)...")
         val h = ByteArray(24); readExact(h, 0, 24)
         val bb = ByteBuffer.wrap(h).order(ByteOrder.LITTLE_ENDIAN)
         val cmd = bb.int; val a0 = bb.int; val a1 = bb.int; val len = bb.int; bb.int; bb.int
+        Log.d("ERIX_ADB", "RX: cmd=${Integer.toHexString(cmd)}, arg0=$a0, arg1=$a1, len=$len")
         val p = ByteArray(len); if (len > 0) readExact(p, 0, len)
         return Msg(cmd, a0, a1, p)
     }
@@ -36,8 +40,9 @@ class AdbUsbTransport(private val usbManager: UsbManager, private val device: Us
         write(encode(Msg(AdbProtocol.A_CNXN, AdbProtocol.A_VERSION_MIN, AdbProtocol.A_MAX_PAYLOAD_V1, banner)))
         while (true) { val m = readMsg()
             when (m.command) { 
-                AdbProtocol.A_CNXN -> { maxPayload = minOf(m.arg1, AdbProtocol.A_MAX_PAYLOAD_V2); return@withContext }; 
+                AdbProtocol.A_CNXN -> { Log.i("ERIX_ADB", "Menerima CNXN (Sukses!)"); maxPayload = minOf(m.arg1, AdbProtocol.A_MAX_PAYLOAD_V2); return@withContext }; 
                 AdbProtocol.A_AUTH -> { 
+                    Log.i("ERIX_ADB", "Menerima AUTH (Token)")
                     if (m.arg0 == AdbProtocol.ADB_AUTH_TOKEN) { 
                         val sig = crypto.sign(m.payload); 
                         if (sig != null) write(encode(Msg(AdbProtocol.A_AUTH, AdbProtocol.ADB_AUTH_SIGNATURE, 0, sig)))
