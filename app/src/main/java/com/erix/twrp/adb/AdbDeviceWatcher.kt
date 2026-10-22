@@ -1,19 +1,19 @@
 package com.erix.twrp.adb
+
 import android.app.PendingIntent
 import android.content.*
 import android.hardware.usb.*
 import android.os.Build
 import android.widget.Toast
-import dadb.Dadb
-import dadb.AdbKeyPair
+import com.flyfishxu.kadb.Kadb
+import com.flyfishxu.kadb.usb.KadbUsb
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.*
 
 object AdbDeviceWatcher {
     private const val ACTION_USB_PERM = "com.erix.twrp.USB_PERMISSION"
-    private val _dadb = MutableStateFlow<Dadb?>(null)
-    val dadb: StateFlow<Dadb?> = _dadb
-    private val _device = MutableStateFlow<UsbDevice?>(null)
+    private val _kadb = MutableStateFlow<Kadb?>(null)
+    val kadb: StateFlow<Kadb?> = _kadb
     
     var currentUsbDevice: UsbDevice? = null; private set
     
@@ -34,14 +34,14 @@ object AdbDeviceWatcher {
                         if (d != null && isAdbDevice(d)) requestPermission(d)
                     }
                     UsbManager.ACTION_USB_DEVICE_DETACHED -> {
-                        _dadb.value?.close()
-                        _dadb.value = null
-                        _device.value = null
+                        _kadb.value?.close()
+                        _kadb.value = null
+                        currentUsbDevice = null
                     }
                     ACTION_USB_PERM -> {
                         val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
                         val d = getDevice(intent)
-                        if (granted && d != null) connectDadb(d)
+                        if (granted && d != null) connectKadb(d)
                         else Toast.makeText(appContext, "Izin USB DITOLAK", Toast.LENGTH_LONG).show()
                     }
                 }
@@ -74,27 +74,23 @@ object AdbDeviceWatcher {
 
     private fun requestPermission(device: UsbDevice) {
         val manager = usbManager ?: return
-        if (manager.hasPermission(device)) { connectDadb(device); return }
+        if (manager.hasPermission(device)) { connectKadb(device); return }
         val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT else PendingIntent.FLAG_UPDATE_CURRENT
         val pi = PendingIntent.getBroadcast(appContext, 0, Intent(ACTION_USB_PERM).setPackage(appContext?.packageName), flags)
         manager.requestPermission(device, pi)
     }
 
-    private fun connectDadb(device: UsbDevice) {
+    private fun connectKadb(device: UsbDevice) {
         try {
-            // Gunakan AdbKeyPair.generate() untuk membuat kunci baru
-            val keyPair = AdbKeyPair.generate()
-            
-            // Dadb.create(UsbManager, UsbDevice, AdbKeyPair)
-            val dadbInstance = Dadb.create(usbManager!!, device, keyPair)
-            
-            _dadb.value = dadbInstance
+            // KadbUsb.create membutuhkan Context dan UsbDevice
+            val kadbInstance = KadbUsb.create(appContext!!, device)
+            _kadb.value = kadbInstance
             currentUsbDevice = device
-            Toast.makeText(appContext, "✓ Terhubung via dadb", Toast.LENGTH_SHORT).show()
+            Toast.makeText(appContext, "✓ Terhubung via Kadb", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
-            Toast.makeText(appContext, "Gagal koneksi dadb: ${e.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(appContext, "Gagal koneksi Kadb: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
-    suspend fun awaitDevice(): UsbDevice = _device.filterNotNull().first()
+    suspend fun awaitDevice(): UsbDevice = _kadb.filterNotNull().first().let { currentUsbDevice!! }
 }

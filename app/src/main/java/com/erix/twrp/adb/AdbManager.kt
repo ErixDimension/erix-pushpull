@@ -1,14 +1,15 @@
 package com.erix.twrp.adb
+
 import android.content.Context
-import dadb.Dadb
+import com.flyfishxu.kadb.Kadb
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 
-class AdbManager(private val context: Context, private val dadb: Dadb) {
+class AdbManager(private val context: Context, private val kadb: Kadb) {
 
     suspend fun shell(cmd: String): String = withContext(Dispatchers.IO) {
-        dadb.shell(cmd).output
+        kadb.shell(cmd).output
     }
 
     suspend fun remoteSize(path: String): Long = withContext(Dispatchers.IO) {
@@ -61,14 +62,14 @@ class AdbManager(private val context: Context, private val dadb: Dadb) {
 
     suspend fun push(localFile: File, remotePath: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            dadb.push(localFile, remotePath)
+            kadb.push(localFile, remotePath)
             true
         } catch (e: Exception) { false }
     }
 
     suspend fun pull(remotePath: String, localFile: File): Boolean = withContext(Dispatchers.IO) {
         try {
-            dadb.pull(localFile, remotePath)
+            kadb.pull(localFile, remotePath)
             true
         } catch (e: Exception) { false }
     }

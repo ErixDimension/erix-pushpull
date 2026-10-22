@@ -7,13 +7,13 @@ import androidx.lifecycle.*
 import com.erix.twrp.adb.AdbManager
 import com.erix.twrp.storage.LocalStorageManager
 import com.erix.twrp.storage.RemoteStorageManager
-import dadb.Dadb
+import com.flyfishxu.kadb.Kadb
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
 // Runtime object menyimpan instance Dadb yang aktif
 object AdbRuntime { 
-    @Volatile var active: Pair<Dadb, String>? = null 
+    @Volatile var active: Pair<Kadb, String>? = null 
 }
 
 class TransferService : LifecycleService() {

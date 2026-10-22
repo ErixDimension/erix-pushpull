@@ -9,7 +9,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.erix.twrp.adb.AdbManager
 import com.erix.twrp.transfer.AdbRuntime
-import dadb.Dadb
+import com.flyfishxu.kadb.Kadb
 import com.erix.twrp.databinding.ActivityBrowserBinding
 import com.erix.twrp.storage.*
 import com.erix.twrp.transfer.TransferService
@@ -25,7 +25,7 @@ class BrowserActivity : AppCompatActivity() {
         isLocal = intent.getStringExtra(EXTRA_SIDE) == "LOCAL"; pickMode = intent.getStringExtra(EXTRA_PICK_MODE) ?: "ITEM"; action = intent.getStringExtra(EXTRA_ACTION) ?: ""
         path = intent.getStringExtra(EXTRA_START_PATH) ?: if (isLocal) "/storage/emulated/0" else "/sdcard/"; floor = intent.getStringExtra(EXTRA_FLOOR) ?: path
         local = LocalStorageManager(this); b.tvTitle.text = intent.getStringExtra(EXTRA_TITLE)
-        val active = AdbRuntime.active; if (active != null) { remote = RemoteStorageManager(AdbManager(this, active.first as Dadb)) } else if (!isLocal) { finish(); return }
+        val active = AdbRuntime.active; if (active != null) { remote = RemoteStorageManager(AdbManager(this, active.first as Kadb)) } else if (!isLocal) { finish(); return }
         adapter = BrowserAdapter(items) { onItemClick(it) }; b.rvItems.layoutManager = LinearLayoutManager(this); b.rvItems.adapter = adapter
         b.btnUp.setOnClickListener { moveCursor(-1) }; b.btnDown.setOnClickListener { moveCursor(1) }; b.btnSelect.setOnClickListener { onItemClick(cursor) }; b.btnBack.setOnClickListener { navigateBack() }; b.btnSelectMode.setOnClickListener { openSelectMode() }; b.btnBasket.setOnClickListener { openBasket() }; b.btnNewFolder.setOnClickListener { doNewFolder() }; b.btnExtract.setOnClickListener { doExtract(items[cursor]) }
         load()
