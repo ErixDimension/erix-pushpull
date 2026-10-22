@@ -17,13 +17,17 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Install SDK Components & Accept Licenses
+        run: |
+          yes | sdkmanager --licenses || true
+          sdkmanager "platforms;android-34" "build-tools;34.0.0"
+
       - name: Compile APK using BuildAPKs script
         run: |
-          # Gunakan script internal dari BuildAPKs untuk mem-build folder app
-          # (Kita panggil aapt & d8 secara langsung yang disediakan oleh BuildAPKs / Android SDK)
           export PATH=$PATH:$ANDROID_HOME/build-tools/34.0.0
           
           mkdir -p app/build
+          mkdir -p app/src/main/res/values
           
           # 1. Kompilasi resource (Manifest)
           aapt package -f -m -J app/build -M app/src/main/AndroidManifest.xml -S app/src/main/res -I $ANDROID_HOME/platforms/android-34/android.jar
@@ -39,7 +43,7 @@ jobs:
           cd app/build && aapt add unsigned.apk classes.dex && cd ../..
           
           # 5. Tanda tangan (debug)
-          keytool -genkey -v -keystore app/build/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          keytool -genkey -v -keystore app/build/debug.keystore -storepass android -alias androiddebugkey -keypass android -storetype PKCS12 -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           apksigner sign --ks app/build/debug.keystore --ks-pass pass:android --key-pass pass:android --out app/build/ErixApp.apk app/build/unsigned.apk
 
       - name: Upload APK Artifact
