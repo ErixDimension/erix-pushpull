@@ -1,6 +1,7 @@
 package com.erix.twrp.adb
 
 import android.hardware.usb.*
+import android.os.Build
 import com.erix.twrp.util.DebugLogger
 import kotlinx.coroutines.*
 import java.io.*
@@ -29,7 +30,6 @@ class AdbUsbTransport(
                 break
             }
         }
-        
         if (adbIntf == null) throw IllegalStateException("Bukan interface ADB!")
         intf = adbIntf
         
@@ -47,33 +47,29 @@ class AdbUsbTransport(
         
         DebugLogger.log("Endpoint IN=${Integer.toHexString(inEp.address)}, OUT=${Integer.toHexString(outEp.address)}")
 
-        // PERBAIKAN 1: Coba claim tanpa force dulu, lalu force jika gagal
         var claimed = connection.claimInterface(intf, false)
         if (!claimed) {
-            DebugLogger.log("Claim(false) gagal, mencoba force(true)...")
+            DebugLogger.log("Claim(false) gagal, coba force(true)...")
             claimed = connection.claimInterface(intf, true)
         }
         if (!claimed) throw IllegalStateException("Gagal klaim interface.")
         DebugLogger.log("Interface berhasil di-claim.")
 
-        // PERBAIKAN 2: Paksa aktifkan interface ADB (bukan PTP)
-        try {
-            connection.setInterface(intf)
-            DebugLogger.log("setInterface(intf) OK.")
-        } catch (e: Exception) {
-            DebugLogger.log("setInterface warning: ${e.message}")
+        try { connection.setInterface(intf); DebugLogger.log("setInterface OK.") } catch (e: Exception) { DebugLogger.log("setInterface warning: ${e.message}") }
+
+        // clearHalt hanya tersedia di API 28+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            try {
+                connection.clearHalt(inEp)
+                connection.clearHalt(outEp)
+                DebugLogger.log("Endpoint halt dibersihkan (API 28+).")
+            } catch (e: Exception) {
+                DebugLogger.log("clearHalt warning: ${e.message}")
+            }
+        } else {
+            DebugLogger.log("API < 28, clearHalt di-skip.")
         }
 
-        // PERBAIKAN 3: Bersihkan endpoint yang mungkin sudah dalam kondisi Stall
-        try {
-            connection.clearHalt(inEp)
-            connection.clearHalt(outEp)
-            DebugLogger.log("Endpoint halt dibersihkan.")
-        } catch (e: Exception) {
-            DebugLogger.log("clearHalt warning: ${e.message}")
-        }
-
-        // Beri waktu USB stack untuk stabil
         Thread.sleep(200)
     }
 
@@ -89,7 +85,6 @@ class AdbUsbTransport(
         }
     }
 
-    // PERBAIKAN 4: Retry otomatis jika stall pada saat read
     private fun readExact(buffer: ByteArray, offset: Int, len: Int) {
         var off = offset
         var rem = len
@@ -99,8 +94,10 @@ class AdbUsbTransport(
             if (n < 0) {
                 if (retries < 2) {
                     retries++
-                    DebugLogger.log("USB Read Stall ($n). Clear halt & retry $retries/2...")
-                    try { connection.clearHalt(inEp) } catch (_: Exception) {}
+                    DebugLogger.log("USB Read Stall ($n). Retry $retries/2...")
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        try { connection.clearHalt(inEp) } catch (_: Exception) {}
+                    }
                     Thread.sleep(100)
                     continue
                 }
@@ -155,7 +152,6 @@ class AdbUsbTransport(
         }
     }
 
-    // Sisa fungsi sama (openService, writeStream, readAll, closeStream, close)
     suspend fun openService(dest: String): Int = withContext(Dispatchers.IO) {
         val id = nextLocalId++; write(encode(Msg(AdbProtocol.A_OPEN, id, 0, (dest + "\u0000").toByteArray())))
         while (true) { val m = readMsg(); when (m.command) {
