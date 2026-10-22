@@ -31,14 +31,26 @@ class MainActivity : AppCompatActivity() {
         scope.launch {
             try {
                 b.tvDevice.text = "Menghubungkan ke ${usbDev.deviceName}..."
-                Toast.makeText(this@MainActivity, "Mencoba koneksi ADB...", Toast.LENGTH_SHORT).show()
-                val mgr = getSystemService(USB_SERVICE) as UsbManager; val conn = mgr.openDevice(usbDev) ?: throw IllegalStateException("openDevice null")
+                val mgr = getSystemService(USB_SERVICE) as UsbManager
+                if (!mgr.hasPermission(usbDev)) {
+                    Toast.makeText(this@MainActivity, "Izin USB belum diberikan. Mohon izinkan.", Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+                val conn = mgr.openDevice(usbDev)
+                if (conn == null) {
+                    b.tvDevice.text = "Gagal: openDevice null (Izin ditolak/device sibuk)"
+                    Toast.makeText(this@MainActivity, "Gagal membuka USB. Coba cabut & colok ulang kabel.", Toast.LENGTH_LONG).show()
+                    return@launch
+                }
                 val transport = AdbUsbTransport(mgr, usbDev, conn, AdbCrypto())
                 withContext(Dispatchers.IO) { transport.connect() }
                 AdbRuntime.active = transport to (usbDev.deviceName ?: "-")
                 b.tvDevice.text = "✓ Terhubung: ${usbDev.deviceName}"
                 Toast.makeText(this@MainActivity, "SUKSES TERHUBUNG!", Toast.LENGTH_LONG).show()
-            } catch (e: Exception) { b.tvDevice.text = "Gagal connect: ${e.message}"; Toast.makeText(this@MainActivity, "GAGAL: ${e.message}", Toast.LENGTH_LONG).show() }
+            } catch (e: Exception) { 
+                b.tvDevice.text = "Gagal connect: ${e.message}"; 
+                Toast.makeText(this@MainActivity, "GAGAL: ${e.message}", Toast.LENGTH_LONG).show() 
+            }
         }
     }
     private fun startBrowser(isLocal: Boolean, pickMode: String, title: String, action: String) {

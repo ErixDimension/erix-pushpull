@@ -26,7 +26,7 @@ object AdbDeviceWatcher {
                             _device.value = d 
                             Toast.makeText(appContext, "Izin USB diberikan. Menghubungkan...", Toast.LENGTH_SHORT).show()
                         } else {
-                            Toast.makeText(appContext, "Izin USB DITOLAK", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(appContext, "Izin USB DITOLAK. Coba cabut dan colok lagi.", Toast.LENGTH_LONG).show()
                         }
                     } 
                 } 
@@ -39,7 +39,6 @@ object AdbDeviceWatcher {
     
     private fun getDev(intent: Intent): UsbDevice? = if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java) else @Suppress("DEPRECATION") intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
     
-    // Deteksi Interface ADB (0xFF, 0x42, 0x01) -> Berlaku untuk Android & TWRP
     private fun isAdb(d: UsbDevice): Boolean { 
         for (i in 0 until d.interfaceCount) { 
             val intf = d.getInterface(i)

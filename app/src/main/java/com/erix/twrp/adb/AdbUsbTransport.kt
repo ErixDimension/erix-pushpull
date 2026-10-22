@@ -14,8 +14,8 @@ class AdbUsbTransport(private val usbManager: UsbManager, private val device: Us
         inEp = fi ?: throw IllegalStateException("No IN"); outEp = fo ?: throw IllegalStateException("No OUT")
         if (!connection.claimInterface(intf, true)) throw IllegalStateException("Gagal klaim interface")
     }
-    private fun write(data: ByteArray) { var off = 0; while (off < data.size) { val chunk = minOf(16384, data.size - off); val w = connection.bulkTransfer(outEp, data, off, chunk, 5000); if (w <= 0) throw IOException("Write timeout"); off += w } }
-    private fun read(): ByteArray { val buf = ByteArray(maxPayload + 24); val n = connection.bulkTransfer(inEp, buf, buf.size, 5000); if (n <= 0) throw IOException("Read timeout"); return buf.copyOf(n) }
+    private fun write(data: ByteArray) { var off = 0; while (off < data.size) { val chunk = minOf(16384, data.size - off); val w = connection.bulkTransfer(outEp, data, off, chunk, 10000); if (w <= 0) throw IOException("Write timeout"); off += w } }
+    private fun read(): ByteArray { val buf = ByteArray(maxPayload + 24); val n = connection.bulkTransfer(inEp, buf, buf.size, 10000); if (n <= 0) throw IOException("Read timeout"); return buf.copyOf(n) }
     private data class Msg(val command: Int, val arg0: Int, val arg1: Int, val payload: ByteArray)
     private fun encode(m: Msg): ByteArray { val bb = ByteBuffer.allocate(24 + m.payload.size).order(ByteOrder.LITTLE_ENDIAN); bb.putInt(m.command); bb.putInt(m.arg0); bb.putInt(m.arg1); bb.putInt(m.payload.size); bb.putInt(checksum(m.payload)); bb.putInt(m.command xor -1); bb.put(m.payload); return bb.array() }
     private fun decode(data: ByteArray): Msg { require(data.size >= 24); val bb = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN); val cmd = bb.int; val a0 = bb.int; val a1 = bb.int; val len = bb.int; bb.int; bb.int; val p = ByteArray(len); if (len > 0) bb.get(p); return Msg(cmd, a0, a1, p) }
