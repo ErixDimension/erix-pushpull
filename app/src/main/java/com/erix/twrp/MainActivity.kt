@@ -23,44 +23,22 @@ class MainActivity : AppCompatActivity() {
         requestBasePermissions(); AdbDeviceWatcher.start(this)
         scope.launch { AdbDeviceWatcher.device.collect { dev -> if (dev != null) connectToDevice(dev) else { AdbRuntime.active = null; b.tvDevice.text = "Tidak ada device" } } }
         
-        // PUSH: Langsung buka browser lokal (tidak butuh ADB untuk memilih file dari HP sendiri)
-        b.btnPush.setOnClickListener {
-            startBrowser(true, "ITEM", "SOURCE — DEVICE A", "push_source")
-        }
+        b.btnPush.setOnClickListener { startBrowser(true, "ITEM", "SOURCE — DEVICE A", "push_source") }
         
-        // PULL: Butuh ADB karena source adalah Device B (remote)
         b.btnPull.setOnClickListener { 
-            if (AdbRuntime.active == null) {
-                Toast.makeText(this, "Device B belum terhubung. Colok kabel USB dulu.", Toast.LENGTH_LONG).show()
-            } else {
-                startBrowser(false, "ITEM", "SOURCE — DEVICE B", "pull_source")
-            }
+            if (AdbRuntime.active == null) Toast.makeText(this, "Device B belum terhubung. Colok kabel USB dulu.", Toast.LENGTH_LONG).show()
+            else startBrowser(false, "ITEM", "SOURCE — DEVICE B", "pull_source")
         }
-        
-        b.btnRefresh.setOnClickListener { 
-            if (AdbRuntime.active == null && AdbDeviceWatcher.device.value == null) {
-                Toast.makeText(this, "Tidak ada kabel USB terdeteksi", Toast.LENGTH_SHORT).show()
-            }
-            b.tvDevice.text = "Refreshing..."; AdbDeviceWatcher.device.value?.let { connectToDevice(it) } 
-        }
+        b.btnRefresh.setOnClickListener { if (AdbDeviceWatcher.device.value == null) Toast.makeText(this, "Tidak ada kabel USB", Toast.LENGTH_SHORT).show(); else AdbDeviceWatcher.device.value?.let { connectToDevice(it) } }
         b.btnExit.setOnClickListener { finish() }
     }
     private fun connectToDevice(usbDev: android.hardware.usb.UsbDevice) {
         scope.launch {
             try {
-                b.tvDevice.text = "Menghubungkan ke ${usbDev.deviceName}..."
+                b.tvDevice.text = "Menghubungkan..."
                 val mgr = getSystemService(USB_SERVICE) as UsbManager
-                if (!mgr.hasPermission(usbDev)) {
-                    Toast.makeText(this@MainActivity, "Izin USB belum diberikan", Toast.LENGTH_LONG).show()
-                    return@launch
-                }
-                var conn = mgr.openDevice(usbDev)
-                if (conn == null) { delay(500); conn = mgr.openDevice(usbDev) }
-                if (conn == null) {
-                    b.tvDevice.text = "Gagal: USB sibuk (dicabut & colok ulang)"
-                    Toast.makeText(this@MainActivity, "USB sibuk. Cabut & colok ulang.", Toast.LENGTH_LONG).show()
-                    return@launch
-                }
+                if (!mgr.hasPermission(usbDev)) return@launch
+                val conn = mgr.openDevice(usbDev) ?: throw IllegalStateException("Gagal buka USB. Cabut & colok ulang.")
                 val transport = AdbUsbTransport(mgr, usbDev, conn, AdbCrypto())
                 withContext(Dispatchers.IO) { transport.connect() }
                 AdbRuntime.active = transport to (usbDev.deviceName ?: "-")
