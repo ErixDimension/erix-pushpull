@@ -1,18 +1,11 @@
 package com.erix.twrp.adb
-
 import android.app.PendingIntent
 import android.content.*
 import android.hardware.usb.*
 import android.os.Build
 import android.widget.Toast
-
- // PERBAIKAN IMPORT
-import kotlinx.coroutines.flow.*
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
 
 object AdbDeviceWatcher {
     private const val ACTION_USB_PERM = "com.erix.twrp.USB_PERMISSION"
@@ -45,7 +38,7 @@ object AdbDeviceWatcher {
                     ACTION_USB_PERM -> {
                         val granted = intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)
                         val d = getDevice(intent)
-                        if (granted && d != null) connectKadb(d)
+                        if (granted && d != null) connectManual(d)
                         else Toast.makeText(appContext, "Izin USB DITOLAK", Toast.LENGTH_LONG).show()
                     }
                 }
@@ -78,22 +71,28 @@ object AdbDeviceWatcher {
 
     private fun requestPermission(device: UsbDevice) {
         val manager = usbManager ?: return
-        if (manager.hasPermission(device)) { connectKadb(device); return }
+        if (manager.hasPermission(device)) { connectManual(device); return }
         val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT else PendingIntent.FLAG_UPDATE_CURRENT
         val pi = PendingIntent.getBroadcast(appContext, 0, Intent(ACTION_USB_PERM).setPackage(appContext?.packageName), flags)
         manager.requestPermission(device, pi)
     }
 
-    private fun connectKadb(device: UsbDevice) {
-        try {
-            val conn = usbManager!!.openDevice(device) ?: throw IllegalStateException("openDevice null")
-            val transport = AdbUsbTransport(usbManager!!, device, conn, AdbCrypto())
-            transport.connect()
-            _transport.value = transport
-            currentUsbDevice = device
-            Toast.makeText(appContext, "✓ Terhubung via Kadb", Toast.LENGTH_SHORT).show()
-        } catch (e: Exception) {
-            Toast.makeText(appContext, "Gagal koneksi Kadb: ${e.message}", Toast.LENGTH_LONG).show()
+    private fun connectManual(device: UsbDevice) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val conn = usbManager!!.openDevice(device) ?: throw IllegalStateException("openDevice null")
+                val transport = AdbUsbTransport(usbManager!!, device, conn, AdbCrypto())
+                transport.connect()
+                withContext(Dispatchers.Main) {
+                    _transport.value = transport
+                    currentUsbDevice = device
+                    Toast.makeText(appContext, "✓ Terhubung via USB Manual", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(appContext, "Gagal koneksi: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
         }
     }
 

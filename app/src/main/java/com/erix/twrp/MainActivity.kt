@@ -10,7 +10,6 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import com.erix.twrp.adb.AdbDeviceWatcher
-import com.erix.twrp.adb.AdbManager
 import com.erix.twrp.databinding.ActivityMainBinding
 import com.erix.twrp.ui.BrowserActivity
 import com.erix.twrp.transfer.AdbRuntime
@@ -36,7 +35,7 @@ class MainActivity : AppCompatActivity() {
                 if (transport != null) {
                     val serial = AdbDeviceWatcher.currentUsbDevice?.deviceName ?: "-"
                     AdbRuntime.active = transport to serial
-                    b.tvDevice.text = "✓ Terhubung: ${AdbDeviceWatcher.currentUsbDevice?.deviceName ?: "-"}"
+                    b.tvDevice.text = "✓ Terhubung: $serial"
                 } else {
                     AdbRuntime.active = null
                     b.tvDevice.text = "Tidak ada device"
@@ -58,7 +57,7 @@ class MainActivity : AppCompatActivity() {
 
         b.btnRefresh.setOnClickListener {
             b.tvDevice.text = "Refreshing..."
-            AdbDeviceWatcher.dadb.value?.let {
+            if (AdbRuntime.active != null) {
                 b.tvDevice.text = "✓ Terhubung: ${AdbDeviceWatcher.currentUsbDevice?.deviceName ?: "-"}"
             }
         }
