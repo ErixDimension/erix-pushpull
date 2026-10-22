@@ -6,8 +6,8 @@ android {
         applicationId "com.erix.twrp"
         minSdk 26
         targetSdk 34
-        versionCode 9
-        versionName "1.0.9" 
+        versionCode 10
+        versionName "1.0.10" 
     }
     signingConfigs {
         debug {
@@ -26,6 +26,7 @@ android {
     buildFeatures { viewBinding true }
 }
 dependencies {
+    implementation "com.squareup.okio:okio:3.9.0"
     implementation "com.flyfishxu:kadb:2.1.5"
     implementation 'androidx.core:core-ktx:1.12.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
