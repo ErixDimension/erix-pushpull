@@ -19,42 +19,25 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         b = ActivityMainBinding.inflate(layoutInflater)
         setContentView(b.root)
-
         AdbDeviceWatcher.start(this)
 
-        // Tampilkan log realtime
         lifecycleScope.launch {
-            DebugLogger.logs.collect { logText ->
-                b.tvLog.text = logText
-            }
+            DebugLogger.logs.collect { b.tvLog.text = it }
+        }
+        lifecycleScope.launch {
+            DebugLogger.status.collect { b.tvStatus.text = it }
         }
 
-        // Tampilkan status device
-        lifecycleScope.launch {
-            DebugLogger.status.collect { status ->
-                b.tvStatus.text = status
-            }
-        }
-
-        // Tombol Copy Log ke Clipboard
         b.btnCopy.setOnClickListener {
-            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            val logText = b.tvLog.text.toString()
-            if (logText.isBlank()) {
-                Toast.makeText(this, "Log masih kosong", Toast.LENGTH_SHORT).show()
-            } else {
-                clipboard.setPrimaryClip(ClipData.newPlainText("ERIX Log", logText))
-                Toast.makeText(this, "✓ Log dicopy ke clipboard!", Toast.LENGTH_SHORT).show()
-            }
+            val text = b.tvLog.text.toString()
+            if (text.isBlank()) { Toast.makeText(this, "Log kosong", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
+            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            cm.setPrimaryClip(ClipData.newPlainText("ERIX Log", text))
+            Toast.makeText(this, "✓ Log dicopy!", Toast.LENGTH_SHORT).show()
         }
-
-        // Tombol Clear
         b.btnClear.setOnClickListener {
             DebugLogger.clear()
             Toast.makeText(this, "Log dibersihkan", Toast.LENGTH_SHORT).show()
         }
-
-        // Tombol Exit
-        b.btnExit.setOnClickListener { finish() }
     }
 }

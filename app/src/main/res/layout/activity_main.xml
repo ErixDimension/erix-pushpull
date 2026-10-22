@@ -9,7 +9,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="✦ ERIX USB DEBUG ✦"
+        android:text="✦ ERIX v48 ✦"
         android:textColor="#00E5FF"
         android:textSize="22sp"
         android:gravity="center"
@@ -35,17 +35,15 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Log Aktivitas:"
-            android:textColor="#AAAAAA"
-            android:textSize="12sp"/>
+            android:text="Log:"
+            android:textColor="#AAAAAA"/>
 
         <Button
             android:id="@+id/btnClear"
             android:layout_width="wrap_content"
             android:layout_height="36dp"
             android:text="Clear"
-            android:textSize="10sp"
-            android:padding="4dp"/>
+            android:textSize="10sp"/>
 
         <Button
             android:id="@+id/btnCopy"
@@ -53,7 +51,6 @@
             android:layout_height="36dp"
             android:text="📋 Copy Log"
             android:textSize="10sp"
-            android:padding="4dp"
             android:layout_marginStart="4dp"/>
     </LinearLayout>
 
@@ -64,21 +61,12 @@
         android:background="#111820"
         android:padding="8dp"
         android:layout_marginTop="4dp">
-
         <TextView
             android:id="@+id/tvLog"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:textColor="#00FF00"
             android:textSize="11sp"
-            android:fontFamily="monospace"
-            android:text=""/>
+            android:fontFamily="monospace"/>
     </ScrollView>
-
-    <Button
-        android:id="@+id/btnExit"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:layout_marginTop="4dp"
-        android:text="❌ Keluar"/>
 </LinearLayout>

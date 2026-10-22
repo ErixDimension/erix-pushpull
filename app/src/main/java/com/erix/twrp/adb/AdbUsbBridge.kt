@@ -1,7 +1,6 @@
 package com.erix.twrp.adb
 
 import android.hardware.usb.*
-import android.os.Build
 import com.erix.twrp.util.DebugLogger
 import kotlinx.coroutines.*
 import java.io.*
@@ -17,62 +16,30 @@ class AdbUsbBridge(
     private var maxPayload = AdbProtocol.A_MAX_PAYLOAD
 
     init {
-        DebugLogger.log("=== BRIDGE v45 AKTIF ===")
-        DebugLogger.log("[USB] Claim & reset interface...")
-
+        DebugLogger.log("=== BRIDGE v48 AKTIF (AOSP PURE) ===")
+        DebugLogger.log("[USB] Claim interface...")
+        // AOSP PURE: Hanya claim. TIDAK setInterface, TIDAK clearHalt di init.
         val claimed = connection.claimInterface(intf, true)
-        DebugLogger.log("[USB] Claim interface: $claimed")
-
-        try {
-            val r = connection.setInterface(intf)
-            DebugLogger.log("[USB] setInterface result: $r")
-        } catch (e: Exception) {
-            DebugLogger.log("[USB] setInterface err: ${e.message}")
-        }
-
-        // Clear halt manual untuk IN dan OUT
-        try {
-            val rhIn = connection.controlTransfer(0x02, 0x01, 0x00, inEp.address, null, 0, 500)
-            val rhOut = connection.controlTransfer(0x02, 0x01, 0x00, outEp.address, null, 0, 500)
-            DebugLogger.log("[USB] Clear halt: IN=$rhIn, OUT=$rhOut")
-        } catch (e: Exception) {
-            DebugLogger.log("[USB] Clear halt err: ${e.message}")
-        }
-
-        Thread.sleep(300)
+        DebugLogger.log("[USB] Claim: $claimed")
+        if (!claimed) throw IOException("Claim gagal")
+        // Beri waktu settle minimal
+        Thread.sleep(100)
     }
 
     private fun write(data: ByteArray) {
-        var off = 0
-        while (off < data.size) {
-            val res = connection.bulkTransfer(outEp, data, off, data.size - off, 5000)
-            if (res <= 0) throw IOException("Write fail: $res")
-            off += res
-        }
+        val res = connection.bulkTransfer(outEp, data, 0, data.size, 5000)
+        if (res < 0) throw IOException("Write fail: $res")
+        if (res != data.size) throw IOException("Partial write: $res/${data.size}")
     }
 
     private fun readExact(buffer: ByteArray, offset: Int, len: Int) {
         var off = offset
         var rem = len
-        var retries = 0
         while (rem > 0) {
             val res = connection.bulkTransfer(inEp, buffer, off, rem, 10000)
-            if (res < 0) {
-                if (retries < 3) {
-                    retries++
-                    DebugLogger.log("[USB] Stall #$retries, clear halt & retry...")
-                    try {
-                        connection.controlTransfer(0x02, 0x01, 0x00, inEp.address, null, 0, 500)
-                        Thread.sleep(100)
-                    } catch (_: Exception) {}
-                    continue
-                }
-                throw IOException("Read fail: $res (stlh $retries retry)")
-            }
+            if (res < 0) throw IOException("Read fail: $res")
             if (res == 0) throw IOException("Read timeout")
-            off += res
-            rem -= res
-            retries = 0
+            off += res; rem -= res
         }
     }
 
@@ -98,22 +65,18 @@ class AdbUsbBridge(
     private fun checksum(p: ByteArray): Int { var s = 0; for (b in p) s += (b.toInt() and 0xFF); return s }
 
     suspend fun connect() = withContext(Dispatchers.IO) {
-        DebugLogger.log("[USB] Handshake CNXN...")
-        // Ganti ke A_VERSION_MIN (0x01000000) untuk kompatibilitas TWRP maksimal
+        DebugLogger.log("[USB] Kirim CNXN (A_VERSION_MIN)...")
         val banner = "host::erix-server\u0000".toByteArray()
-        val packet = encode(Msg(AdbProtocol.A_VERSION_MIN, AdbProtocol.A_VERSION_MIN, maxPayload, banner))
-        
-        DebugLogger.log("[USB] TX CNXN: ${packet.size} bytes")
+        val packet = encode(Msg(AdbProtocol.A_CNXN, AdbProtocol.A_VERSION_MIN, maxPayload, banner))
+        DebugLogger.log("[USB] TX: ${packet.size} bytes")
         write(packet)
-        
-        Thread.sleep(200)
-        DebugLogger.log("[USB] Menunggu respons CNXN...")
+        DebugLogger.log("[USB] Menunggu balasan...")
 
         while (true) {
             val m = readMsg()
             when (m.cmd) {
                 AdbProtocol.A_CNXN -> {
-                    DebugLogger.log("[USB] ✓ CNXN OK! Device siap.")
+                    DebugLogger.log("[USB] ✓✓✓ CNXN DITERIMA - SUKSES! ✓✓✓")
                     return@withContext
                 }
                 AdbProtocol.A_AUTH -> {
@@ -128,10 +91,12 @@ class AdbUsbBridge(
                         }
                     }
                 }
-                else -> throw IOException("Unexpected: ${Integer.toHexString(m.cmd)}")
+                else -> throw IOException("Cmd aneh: ${Integer.toHexString(m.cmd)}")
             }
         }
     }
 
-    override fun close() { try { connection.releaseInterface(intf); connection.close() } catch (_: Exception) {} }
+    override fun close() {
+        try { connection.releaseInterface(intf); connection.close() } catch (_: Exception) {}
+    }
 }

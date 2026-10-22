@@ -9,10 +9,11 @@ import kotlinx.coroutines.*
 
 object AdbDeviceWatcher {
     private const val ACTION_USB_PERM = "com.erix.twrp.USB_PERMISSION"
-    var currentUsbDevice: UsbDevice? = null; private set
     private var usbManager: UsbManager? = null
     private var appContext: Context? = null
     private var receiver: BroadcastReceiver? = null
+    private var lastDeviceId = -1
+    private var lastAttachTime = 0L
 
     fun start(context: Context) {
         appContext = context.applicationContext
@@ -23,21 +24,23 @@ object AdbDeviceWatcher {
             override fun onReceive(ctx: Context?, intent: Intent?) {
                 when (intent?.action) {
                     UsbManager.ACTION_USB_DEVICE_ATTACHED -> {
-                        val d = getDevice(intent)
-                        DebugLogger.log("USB Dicolok: ${d?.deviceName}")
-                        if (d != null && isAdbDevice(d)) requestPermission(d)
+                        val d = getDevice(intent) ?: return
+                        // Debounce: abaikan jika device sama dalam 1 detik (cegah spam)
+                        val now = System.currentTimeMillis()
+                        if (d.deviceId == lastDeviceId && now - lastAttachTime < 1000) return
+                        lastDeviceId = d.deviceId
+                        lastAttachTime = now
+                        DebugLogger.log("USB Dicolok: ${d.deviceName}")
+                        if (isAdbDevice(d)) requestPermission(d) else DebugLogger.log("Bukan ADB")
                     }
                     UsbManager.ACTION_USB_DEVICE_DETACHED -> {
                         DebugLogger.log("USB Dicabut")
-                        currentUsbDevice = null
                         DebugLogger.setStatus("Menunggu device...")
                     }
                     ACTION_USB_PERM -> {
-                        if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
+                        if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false))
                             getDevice(intent)?.let { connect(it) }
-                        } else {
-                            DebugLogger.log("Izin USB ditolak")
-                        }
+                        else DebugLogger.log("Izin USB DITOLAK")
                     }
                 }
             }
@@ -47,11 +50,9 @@ object AdbDeviceWatcher {
             addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
             addAction(ACTION_USB_PERM)
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
             context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            context.registerReceiver(receiver, filter)
-        }
+        else context.registerReceiver(receiver, filter)
     }
 
     private fun getDevice(intent: Intent): UsbDevice? =
@@ -72,34 +73,24 @@ object AdbDeviceWatcher {
         val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
             PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         else PendingIntent.FLAG_UPDATE_CURRENT
-        val pi = PendingIntent.getBroadcast(
-            appContext, 0,
-            Intent(ACTION_USB_PERM).setPackage(appContext?.packageName),
-            flags
-        )
-        manager.requestPermission(device, pi)
+        manager.requestPermission(device,
+            PendingIntent.getBroadcast(appContext, 0,
+                Intent(ACTION_USB_PERM).setPackage(appContext?.packageName), flags))
     }
 
     private fun connect(device: UsbDevice) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val conn = usbManager!!.openDevice(device)
-                    ?: throw IllegalStateException("openDevice null")
-
-                // Cari interface ADB
+                val conn = usbManager!!.openDevice(device) ?: throw IllegalStateException("openDevice null")
                 var adbIntf: UsbInterface? = null
                 for (i in 0 until device.interfaceCount) {
-                    val intf = device.getInterface(i)
-                    if (intf.interfaceClass == 0xFF && intf.interfaceSubclass == 0x42 && intf.interfaceProtocol == 0x01) {
-                        adbIntf = intf
-                        break
+                    val it = device.getInterface(i)
+                    if (it.interfaceClass == 0xFF && it.interfaceSubclass == 0x42 && it.interfaceProtocol == 0x01) {
+                        adbIntf = it; break
                     }
                 }
-                if (adbIntf == null) throw IllegalStateException("Bukan interface ADB")
-
-                // Cari endpoint
-                var fi: UsbEndpoint? = null
-                var fo: UsbEndpoint? = null
+                if (adbIntf == null) throw IllegalStateException("Interface ADB tidak ditemukan")
+                var fi: UsbEndpoint? = null; var fo: UsbEndpoint? = null
                 for (i in 0 until adbIntf.endpointCount) {
                     val ep = adbIntf.getEndpoint(i)
                     if (ep.type == UsbConstants.USB_ENDPOINT_XFER_BULK) {
@@ -108,17 +99,13 @@ object AdbDeviceWatcher {
                     }
                 }
                 if (fi == null || fo == null) throw IllegalStateException("Endpoint tidak lengkap")
-
-                // === KUNCI: Constructor dengan intf ===
                 val bridge = AdbUsbBridge(conn, adbIntf, fi, fo, AdbCrypto())
                 bridge.connect()
-
-                currentUsbDevice = device
-                DebugLogger.log("✓ Bridge v46 berhasil connect!")
+                DebugLogger.log("✓ SUKSES - TERHUBUNG KE DEVICE B!")
                 DebugLogger.setStatus("✓ Terhubung!")
             } catch (e: Exception) {
                 DebugLogger.log("❌ Gagal: ${e.message}")
-                DebugLogger.setStatus("❌ Gagal: ${e.message}")
+                DebugLogger.setStatus("❌ ${e.message}")
             }
         }
     }
