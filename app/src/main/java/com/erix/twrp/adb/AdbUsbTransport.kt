@@ -39,7 +39,7 @@ class AdbUsbTransport(
     private fun write(data: ByteArray) {
         if (data.size >= 4) {
             val cmd = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN).int
-            Log.d("ERIX_ADB", "TX: ${data.size} bytes, cmd=" + Integer.toHexString(cmd))
+            Log.d("ERIX_DEBUG", "TX: ${data.size} bytes, cmd=" + Integer.toHexString(cmd))
         }
         var off = 0
         while (off < data.size) {
@@ -68,7 +68,7 @@ class AdbUsbTransport(
         readExact(h, 0, 24)
         val bb = ByteBuffer.wrap(h).order(ByteOrder.LITTLE_ENDIAN)
         val cmd = bb.int; val a0 = bb.int; val a1 = bb.int; val len = bb.int; bb.int; bb.int
-        Log.d("ERIX_ADB", "RX: cmd=" + Integer.toHexString(cmd) + ", arg0=$a0, arg1=$a1, len=$len")
+        Log.d("ERIX_DEBUG", "RX: cmd=" + Integer.toHexString(cmd) + ", arg0=$a0, arg1=$a1, len=$len")
         val p = ByteArray(len)
         if (len > 0) readExact(p, 0, len)
         return Msg(cmd, a0, a1, p)
@@ -84,7 +84,7 @@ class AdbUsbTransport(
     private fun checksum(p: ByteArray): Int { var s = 0; for (b in p) s += (b.toInt() and 0xFF); return s }
 
     suspend fun connect() = withContext(Dispatchers.IO) {
-        Log.i("ERIX_ADB", "Memulai koneksi ADB...")
+        Log.i("ERIX_DEBUG", "Memulai koneksi ADB...")
         val banner = "host::erix-apk\u0000".toByteArray()
         
         // PERBAIKAN: Gunakan A_VERSION_SKIP_CHECKSUM (0x01000001) agar TWRP merespons
@@ -94,12 +94,12 @@ class AdbUsbTransport(
             val m = readMsg()
             when (m.command) {
                 AdbProtocol.A_CNXN -> {
-                    Log.i("ERIX_ADB", "Menerima CNXN (Sukses!)")
+                    Log.i("ERIX_DEBUG", "Menerima CNXN (Sukses!)")
                     maxPayload = minOf(m.arg1, AdbProtocol.A_MAX_PAYLOAD_V2)
                     return@withContext
                 }
                 AdbProtocol.A_AUTH -> {
-                    Log.i("ERIX_ADB", "Menerima AUTH (Token)")
+                    Log.i("ERIX_DEBUG", "Menerima AUTH (Token)")
                     if (m.arg0 == AdbProtocol.ADB_AUTH_TOKEN) {
                         val sig = crypto.sign(m.payload)
                         if (sig != null) {

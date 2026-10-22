@@ -1,27 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
     <uses-feature android:name="android.hardware.usb.host" android:required="true"/>
     
-    <application android:allowBackup="true" android:icon="@android:drawable/sym_def_app_icon" android:label="ERIX TWRP" android:theme="@style/Theme.ErixTwrp">
+    <application android:allowBackup="true" android:icon="@android:drawable/sym_def_app_icon" android:label="ERIX TWRP Debug" android:theme="@style/Theme.ErixTwrp">
         <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
             
-            <!-- INI KUNCI RAHASIANYA: Daftarkan sebagai handler USB -->
+            <!-- Melepas filter ketat, agar semua colokan USB memicu dialog -->
             <intent-filter>
                 <action android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" />
             </intent-filter>
-            <meta-data android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" android:resource="@xml/usb_device_filter" />
+            <!-- Hapus meta-data filter yang lama, biarkan sistem yang memilih -->
         </activity>
         
         <activity android:name=".ui.BrowserActivity" android:exported="false"/>
         <activity android:name=".ui.BasketActivity" android:exported="false"/>
-        <service android:name=".transfer.TransferService" android:foregroundServiceType="dataSync" android:exported="false"/>
     </application>
 </manifest>
