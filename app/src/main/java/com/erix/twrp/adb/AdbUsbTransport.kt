@@ -8,7 +8,6 @@ class AdbUsbTransport(private val usbManager: UsbManager, private val device: Us
     private var maxPayload = AdbProtocol.A_MAX_PAYLOAD_V1; private var nextLocalId = 1
     private val pending = mutableMapOf<Int, ByteArrayOutputStream>()
     init {
-        try { val cfg = device.getConfiguration(0); if (cfg != null) connection.setConfiguration(cfg) } catch (_: Exception) {}
         intf = (0 until device.interfaceCount).map { device.getInterface(it) }.firstOrNull { it.interfaceClass == 0xFF && it.interfaceSubclass == 0x42 && it.interfaceProtocol == 0x01 } ?: device.getInterface(0)
         if (!connection.claimInterface(intf, true)) throw IllegalStateException("Gagal claim interface.")
         var fi: UsbEndpoint? = null; var fo: UsbEndpoint? = null
