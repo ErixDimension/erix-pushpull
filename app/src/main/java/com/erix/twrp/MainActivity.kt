@@ -32,7 +32,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         scope.launch {
-            AdbDeviceWatcher.transport.collect { t ->
+            AdbDeviceWatcher.kadb.collect { t ->
                 if (t != null) b.tvDevice.text = "✓ Terhubung: ${AdbDeviceWatcher.currentUsbDevice?.deviceName ?: "-"}"
                 else b.tvDevice.text = "Tidak ada device"
             }
