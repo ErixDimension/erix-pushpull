@@ -40,7 +40,13 @@ class BrowserActivity : AppCompatActivity() {
     private fun finishWithItem(it: StorageItem) {
         pendingSource = it; pendingSourceSide = if (isLocal) "LOCAL" else "REMOTE"; pendingAction = action; finish()
         when (action) {
-            "push_source" -> startActivity(Intent(this, BrowserActivity::class.java).apply { putExtra(EXTRA_SIDE, "REMOTE"); putExtra(EXTRA_PICK_MODE, "DIR"); putExtra(EXTRA_TITLE, "DEST — B"); putExtra(EXTRA_ACTION, "push_dest"); putExtra(EXTRA_START_PATH, "/sdcard/") })
+            "push_source" -> {
+                if (AdbRuntime.active == null) {
+                    Toast.makeText(this, "Device B belum terhubung. Colok kabel USB dulu.", Toast.LENGTH_LONG).show()
+                    return
+                }
+                startActivity(Intent(this, BrowserActivity::class.java).apply { putExtra(EXTRA_SIDE, "REMOTE"); putExtra(EXTRA_PICK_MODE, "DIR"); putExtra(EXTRA_TITLE, "DEST — B"); putExtra(EXTRA_ACTION, "push_dest"); putExtra(EXTRA_START_PATH, "/sdcard/") })
+            }
             "pull_source" -> startActivity(Intent(this, BrowserActivity::class.java).apply { putExtra(EXTRA_SIDE, "LOCAL"); putExtra(EXTRA_PICK_MODE, "DIR"); putExtra(EXTRA_TITLE, "DEST — A"); putExtra(EXTRA_ACTION, "pull_dest"); putExtra(EXTRA_START_PATH, "/storage/emulated/0") })
             "push_dest" -> TransferService.start(this, "push", pendingSource!!.path, it.path)
             "pull_dest" -> TransferService.start(this, "pull", pendingSource!!.path, it.path)

@@ -29,7 +29,8 @@ class AdbCrypto(private val alias: String = "erix_adb_key") {
         val modulus = pub.modulus
         val exponent = pub.publicExponent
         
-        val modulusBytes = modulus.toByteArray()
+        var modulusBytes = modulus.toByteArray()
+        while (modulusBytes.size > 1 && modulusBytes[0] == 0.toByte()) modulusBytes = modulusBytes.copyOfRange(1, modulusBytes.size)
         val modLen = modulusBytes.size
         val nWords = (modLen + 3) / 4
         
