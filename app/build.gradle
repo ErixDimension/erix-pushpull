@@ -1,13 +1,13 @@
 plugins { id 'com.android.application'; id 'org.jetbrains.kotlin.android' }
 android {
     namespace 'com.erix.twrp'
-    compileSdk 35
+    compileSdk 36
     defaultConfig { 
         applicationId "com.erix.twrp"
         minSdk 26
-        targetSdk 35
-        versionCode 15
-        versionName "1.0.15" 
+        targetSdk 36
+        versionCode 16
+        versionName "1.0.16" 
     }
     signingConfigs {
         debug {
@@ -27,7 +27,7 @@ android {
 }
 dependencies {
     implementation "com.squareup.okio:okio:3.9.0"
-    implementation "com.flyfishxu:kadb:2.1.0"
+    implementation "com.flyfishxu:kadb:2.1.1"
     implementation 'androidx.core:core-ktx:1.12.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.11.0'
