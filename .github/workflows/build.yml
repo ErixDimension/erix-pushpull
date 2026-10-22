@@ -1,9 +1,9 @@
-name: Build ERIX Java APK
+name: Build ERIX Kotlin APK
 on: [push, workflow_dispatch]
 
 jobs:
   build-android:
-    runs-on: ubuntu-22.04 # Gunakan 22.04 agar stabil
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -14,37 +14,18 @@ jobs:
           java-version: '17'
           distribution: 'zulu'
 
-      - name: Compile APK (Pre-installed SDK)
-        run: |
-          # Deteksi otomatis folder Build Tools dan Platform terbaru
-          BUILD_TOOLS=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1)
-          PLATFORM=$(ls -d $ANDROID_HOME/platforms/* | sort -V | tail -1)
-          
-          echo "Menggunakan Build Tools: $BUILD_TOOLS"
-          echo "Menggunakan Platform: $PLATFORM"
-          
-          mkdir -p app/build
-          
-          # 1. Kompilasi resource
-          $BUILD_TOOLS/aapt package -f -m -J app/build -M app/src/main/AndroidManifest.xml -S app/src/main/res -I $PLATFORM/android.jar
-          
-          # 2. Kompilasi Java ke .class
-          javac -d app/build -classpath $PLATFORM/android.jar app/src/main/java/com/erix/app/*.java app/build/com/erix/app/R.java
-          
-          # 3. Ubah .class ke .dex
-          $BUILD_TOOLS/d8 --lib $PLATFORM/android.jar --output app/build app/build/com/erix/app/*.class
-          
-          # 4. Bungkus jadi APK
-          $BUILD_TOOLS/aapt package -f -M app/src/main/AndroidManifest.xml -S app/src/main/res -I $PLATFORM/android.jar -F app/build/unsigned.apk
-          cd app/build && $BUILD_TOOLS/aapt add unsigned.apk classes.dex && cd ../..
-          
-          # 5. Tanda tangan
-          keytool -genkey -v -keystore app/build/debug.keystore -storepass android -alias androiddebugkey -keypass android -storetype PKCS12 -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-          $BUILD_TOOLS/apksigner sign --ks app/build/debug.keystore --ks-pass pass:android --key-pass pass:android --out app/build/ErixApp.apk app/build/unsigned.apk
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Generate Gradle Wrapper
+        run: gradle wrapper --gradle-version 8.5
+
+      - name: Build with Gradle
+        run: ./gradlew assembleDebug
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: erix-java-apk
-          path: app/build/ErixApp.apk
+          name: erix-kotlin-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
