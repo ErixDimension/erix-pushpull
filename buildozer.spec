@@ -8,7 +8,7 @@ source.include_exts = py,png,jpg,kv,atlas,ttf,so
 
 version = 0.1
 
-requirements = python3,kivy==2.3.1,android,pyjnius
+requirements = python3,kivy==2.3.1,android,pyjnius,requests,charset-normalizer<3.0,idna,urllib3,certifi
 
 android.permissions = INTERNET,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,MANAGE_EXTERNAL_STORAGE
 
