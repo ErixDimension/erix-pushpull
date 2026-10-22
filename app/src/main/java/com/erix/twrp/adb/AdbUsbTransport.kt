@@ -56,13 +56,13 @@ class AdbUsbTransport(
 
         try { connection.setInterface(intf); DebugLogger.log("setInterface OK.") } catch (e: Exception) { DebugLogger.log("setInterface warning: ${e.message}") }
 
-        // clearHalt langsung tanpa Build check (minSdk 28)
+        // MANUAL CLEAR HALT (USB Standard Control Transfer)
         try {
-            connection.clearHalt(inEp)
-            connection.clearHalt(outEp)
-            DebugLogger.log("Endpoint halt dibersihkan.")
+            val inRes = connection.controlTransfer(0x02, 0x01, 0x00, inEp.address, null, 0, 500)
+            val outRes = connection.controlTransfer(0x02, 0x01, 0x00, outEp.address, null, 0, 500)
+            DebugLogger.log("Manual clearHalt: IN=$inRes, OUT=$outRes")
         } catch (e: Exception) {
-            DebugLogger.log("clearHalt warning: ${e.message}")
+            DebugLogger.log("Manual clearHalt warning: ${e.message}")
         }
 
         Thread.sleep(200)
@@ -90,7 +90,7 @@ class AdbUsbTransport(
                 if (retries < 2) {
                     retries++
                     DebugLogger.log("USB Read Stall ($n). Retry $retries/2...")
-                    try { connection.clearHalt(inEp) } catch (_: Exception) {}
+                    try { connection.controlTransfer(0x02, 0x01, 0x00, inEp.address, null, 0, 500) } catch (_: Exception) {}
                     Thread.sleep(100)
                     continue
                 }
