@@ -68,7 +68,7 @@ class AdbManager(private val context: Context, private val dadb: Dadb) {
 
     suspend fun pull(remotePath: String, localFile: File): Boolean = withContext(Dispatchers.IO) {
         try {
-            dadb.pull(remotePath, localFile)
+            dadb.pull(localFile, remotePath)
             true
         } catch (e: Exception) { false }
     }

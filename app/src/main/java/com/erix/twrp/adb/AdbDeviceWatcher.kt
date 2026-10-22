@@ -82,29 +82,11 @@ object AdbDeviceWatcher {
 
     private fun connectDadb(device: UsbDevice) {
         try {
-            val connection = usbManager!!.openDevice(device) ?: throw IllegalStateException("openDevice null")
-            var fi: UsbEndpoint? = null
-            var fo: UsbEndpoint? = null
-            val intf = (0 until device.interfaceCount).map { device.getInterface(it) }.firstOrNull {
-                it.interfaceClass == 0xFF && it.interfaceSubclass == 0x42 && it.interfaceProtocol == 0x01
-            } ?: device.getInterface(0)
-            
-            if (!connection.claimInterface(intf, true)) throw IllegalStateException("Gagal claim interface")
-            
-            for (i in 0 until intf.endpointCount) {
-                val ep = intf.getEndpoint(i)
-                if (ep.type == UsbConstants.USB_ENDPOINT_XFER_BULK) {
-                    if (ep.direction == UsbConstants.USB_DIR_IN) fi = ep
-                    if (ep.direction == UsbConstants.USB_DIR_OUT) fo = ep
-                }
-            }
-            val inEp = fi ?: throw IllegalStateException("No IN Endpoint")
-            val outEp = fo ?: throw IllegalStateException("No OUT Endpoint")
-            
-            val transport = UsbTransport(connection, inEp, outEp)
-            // dadb membutuhkan AdbKeyPair untuk enkripsi RSA
+            // Gunakan AdbKeyPair.generate() untuk membuat kunci baru
             val keyPair = AdbKeyPair.generate()
-            val dadbInstance = Dadb.create(transport, keyPair)
+            
+            // Dadb.create(UsbManager, UsbDevice, AdbKeyPair)
+            val dadbInstance = Dadb.create(usbManager!!, device, keyPair)
             
             _dadb.value = dadbInstance
             currentUsbDevice = device
