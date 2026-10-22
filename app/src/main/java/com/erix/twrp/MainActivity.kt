@@ -32,7 +32,7 @@ class MainActivity : AppCompatActivity() {
         AdbDeviceWatcher.start(this)
 
         scope.launch {
-            AdbDeviceWatcher.kadb.collect { dadb ->
+            AdbDeviceWatcher.transport.collect { dadb ->
                 if (dadb != null) {
                     val serial = AdbDeviceWatcher.currentUsbDevice?.deviceName ?: "-"
                     AdbRuntime.active = dadb to serial

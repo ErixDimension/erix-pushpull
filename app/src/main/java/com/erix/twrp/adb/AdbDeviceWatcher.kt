@@ -5,15 +5,15 @@ import android.content.*
 import android.hardware.usb.*
 import android.os.Build
 import android.widget.Toast
-import com.flyfishxu.kadb.Kadb
-import com.flyfishxu.kadb.transport.usb.KadbUsb // PERBAIKAN IMPORT
+
+ // PERBAIKAN IMPORT
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.*
 
 object AdbDeviceWatcher {
     private const val ACTION_USB_PERM = "com.erix.twrp.USB_PERMISSION"
-    private val _kadb = MutableStateFlow<Kadb?>(null)
-    val kadb: StateFlow<Kadb?> = _kadb
+    private val _transport = MutableStateFlow<AdbUsbTransport?>(null)
+    val transport: StateFlow<AdbUsbTransport?> = _transport
     
     var currentUsbDevice: UsbDevice? = null; private set
     
@@ -34,8 +34,8 @@ object AdbDeviceWatcher {
                         if (d != null && isAdbDevice(d)) requestPermission(d)
                     }
                     UsbManager.ACTION_USB_DEVICE_DETACHED -> {
-                        _kadb.value?.close()
-                        _kadb.value = null
+                        _transport.value?.close()
+                        _transport.value = null
                         currentUsbDevice = null
                     }
                     ACTION_USB_PERM -> {
@@ -82,8 +82,10 @@ object AdbDeviceWatcher {
 
     private fun connectKadb(device: UsbDevice) {
         try {
-            val kadbInstance = KadbUsb.create(appContext!!, device)
-            _kadb.value = kadbInstance
+            val conn = usbManager!!.openDevice(device) ?: throw IllegalStateException("openDevice null")
+            val transport = AdbUsbTransport(usbManager!!, device, conn, AdbCrypto())
+            transport.connect()
+            _transport.value = transport
             currentUsbDevice = device
             Toast.makeText(appContext, "✓ Terhubung via Kadb", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
@@ -91,5 +93,5 @@ object AdbDeviceWatcher {
         }
     }
 
-    suspend fun awaitDevice(): UsbDevice = _kadb.filterNotNull().first().let { currentUsbDevice!! }
+    suspend fun awaitDevice(): UsbDevice = _transport.filterNotNull().first().let { currentUsbDevice!! }
 }
