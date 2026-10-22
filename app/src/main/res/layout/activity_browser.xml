@@ -9,10 +9,4 @@
         <Button android:id="@+id/btnSelect" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="2" android:text="PILIH"/>
         <Button android:id="@+id/btnBack" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="2" android:text="← KEMBALI"/>
     </LinearLayout>
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:background="#111820" android:padding="4dp">
-        <Button android:id="@+id/btnSelectMode" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1" android:text="☑ Multi"/>
-        <Button android:id="@+id/btnBasket" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1" android:text="🧺 Basket"/>
-        <Button android:id="@+id/btnNewFolder" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1" android:text="+ Folder"/>
-        <Button android:id="@+id/btnExtract" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1" android:text="📦 Extract"/>
-    </LinearLayout>
 </LinearLayout>

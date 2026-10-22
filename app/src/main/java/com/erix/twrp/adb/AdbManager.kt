@@ -1,20 +1,14 @@
 package com.erix.twrp.adb
 import android.content.Context
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 import java.io.*
-
 class AdbManager(private val context: Context, private val transport: AdbUsbTransport) {
-    suspend fun shell(cmd: String): String = withContext(Dispatchers.IO) {
-        val id = transport.openService("shell:$cmd")
-        try { String(transport.readAll(id), Charsets.UTF_8).trim() } finally { transport.closeStream(id) }
-    }
+    suspend fun shell(cmd: String): String = withContext(Dispatchers.IO) { val id = transport.openService("shell:$cmd"); try { String(transport.readAll(id), Charsets.UTF_8).trim() } finally { transport.closeStream(id) } }
     suspend fun remoteSize(path: String): Long = shell("stat -c %s '${q(path)}' 2>/dev/null").trim().toLongOrNull() ?: 0L
     suspend fun remoteIsDir(path: String): Boolean = "Y" in shell("[ -d ${q(path)} ] && echo Y || echo N")
     suspend fun remoteExists(path: String): Boolean = "Y" in shell("[ -e ${q(path)} ] && echo Y || echo N")
     suspend fun remoteSizeOrDirSize(path: String): Long = shell("if [ -d ${q(path)} ]; then du -sb ${q(path)} 2>/dev/null | cut -f1; elif [ -f ${q(path)} ]; then stat -c %s ${q(path)} 2>/dev/null; else echo 0; fi").lines().mapNotNull { it.trim().toLongOrNull() }.firstOrNull() ?: 0L
     suspend fun remoteFreeBytes(path: String): Long { val n = shell("df -k ${q(path)} 2>/dev/null | tail -1").split(Regex("\\s+")).mapNotNull { it.toLongOrNull() }; return if (n.size >= 3) n[2] * 1024 else 0L }
-    
     data class RemoteEntry(val name: String, val path: String, val isDir: Boolean, val size: Long)
     suspend fun listDir(path: String): List<RemoteEntry> = withContext(Dispatchers.IO) {
         val norm = normalizeRemotePath(path); val out = shell("ls -ln ${q(norm)}"); val res = mutableListOf<RemoteEntry>()
@@ -22,7 +16,6 @@ class AdbManager(private val context: Context, private val transport: AdbUsbTran
         res.sortedWith(compareBy({ !it.isDir }, { it.name.lowercase() }))
     }
     fun normalizeRemotePath(p: String): String { var s = p.replace(Regex("/+"), "/"); if (!s.endsWith("/")) s += "/"; return s }
-    
     suspend fun push(localFile: File, remotePath: String): Boolean = withContext(Dispatchers.IO) {
         try {
             val id = transport.openService("sync:")
@@ -30,8 +23,7 @@ class AdbManager(private val context: Context, private val transport: AdbUsbTran
             val buf = ByteArray(65536); val file = RandomAccessFile(localFile, "r"); var sent = 0L; val total = localFile.length()
             while (sent < total) { val n = file.read(buf, 0, minOf(buf.size.toLong(), total - sent).toInt()); if (n <= 0) break; transport.writeStream(id, "DATA".toByteArray() + "%04x".format(n).toByteArray()); transport.writeStream(id, buf.copyOfRange(0, n)); sent += n }
             file.close(); transport.writeStream(id, "DONE".toByteArray() + "%04x".format((localFile.lastModified() / 1000).toInt()).toByteArray())
-            val resp = String(transport.readAll(id), Charsets.UTF_8); transport.closeStream(id)
-            !resp.contains("FAIL")
+            val resp = String(transport.readAll(id), Charsets.UTF_8); transport.closeStream(id); !resp.contains("FAIL")
         } catch (e: Exception) { false }
     }
     suspend fun pull(remotePath: String, localFile: File): Boolean = withContext(Dispatchers.IO) {
