@@ -24,11 +24,11 @@ class AdbUsbTransport(private val usbManager: UsbManager, private val device: Us
     private fun decode(data: ByteArray): Msg { require(data.size >= 24); val bb = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN); val cmd = bb.int; val a0 = bb.int; val a1 = bb.int; val len = bb.int; bb.int; bb.int; val p = ByteArray(len); if (len > 0) bb.get(p); return Msg(cmd, a0, a1, p) }
     private fun checksum(payload: ByteArray): Int { var s = 0; for (b in payload) s += (b.toInt() and 0xFF); return s }
     suspend fun connect() = withContext(Dispatchers.IO) {
-        val banner = "host::erix-apk\x00".toByteArray(); write(encode(Msg(AdbProtocol.A_CNXN, AdbProtocol.A_VERSION_SKIP_CHECKSUM, AdbProtocol.A_MAX_PAYLOAD_V2, banner)))
+        val banner = "host::erix-apk\u0000".toByteArray(); write(encode(Msg(AdbProtocol.A_CNXN, AdbProtocol.A_VERSION_SKIP_CHECKSUM, AdbProtocol.A_MAX_PAYLOAD_V2, banner)))
         while (true) { val m = decode(read()); when (m.command) { AdbProtocol.A_CNXN -> { maxPayload = minOf(m.arg1, AdbProtocol.A_MAX_PAYLOAD_V2); return@withContext }; AdbProtocol.A_AUTH -> { if (m.arg0 == AdbProtocol.ADB_AUTH_TOKEN) { val sig = crypto.sign(m.payload); if (sig != null) write(encode(Msg(AdbProtocol.A_AUTH, AdbProtocol.ADB_AUTH_SIGNATURE, 0, sig))) else { write(encode(Msg(AdbProtocol.A_AUTH, AdbProtocol.ADB_AUTH_RSAPUBLICKEY, 0, crypto.publicKeyBytes()))); write(encode(Msg(AdbProtocol.A_CNXN, AdbProtocol.A_VERSION_SKIP_CHECKSUM, maxPayload, banner))) } } else throw IllegalStateException("Auth unknown") }; else -> throw IllegalStateException("Handshake unexpected") } }
     }
     suspend fun openService(dest: String): Int = withContext(Dispatchers.IO) {
-        val id = nextLocalId++; write(encode(Msg(AdbProtocol.A_OPEN, id, 0, (dest + "\x00").toByteArray())))
+        val id = nextLocalId++; write(encode(Msg(AdbProtocol.A_OPEN, id, 0, (dest + "\u0000").toByteArray())))
         while (true) { val m = decode(read()); when (m.command) { AdbProtocol.A_OKAY -> if (m.arg1 == id) return@withContext id; AdbProtocol.A_CLSE -> throw IOException("Rejected"); AdbProtocol.A_WRTE -> { pending.getOrPut(m.arg0) { ByteArrayOutputStream() }.write(m.payload); write(encode(Msg(AdbProtocol.A_OKAY, id, m.arg0, ByteArray(0)))) } } }
         throw IllegalStateException("EOF")
     }

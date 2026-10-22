@@ -8,7 +8,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.erix.twrp.adb.AdbManager
-import com.erix.twrp.adb.AdbRuntime
+import com.erix.twrp.transfer.AdbRuntime
 import com.erix.twrp.databinding.ActivityBrowserBinding
 import com.erix.twrp.storage.*
 import com.erix.twrp.transfer.TransferService

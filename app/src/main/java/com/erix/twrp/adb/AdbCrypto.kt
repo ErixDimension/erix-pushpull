@@ -16,7 +16,7 @@ class AdbCrypto(private val alias: String = "erix_adb_key") {
         val pub = keyPair.public as RSAPublicKey; val modulus = pub.modulus; val exponent = pub.publicExponent
         val n = toWords(modulus.toByteArray()); val bb = ByteBuffer.allocate(4 + 4 + n.size * 4 + n.size * 4 + 4).order(ByteOrder.LITTLE_ENDIAN)
         bb.putInt(n.size); bb.putInt(0); for (w in n) bb.putInt(w); bb.put(ByteArray(n.size * 4)); bb.putInt(exponent.toInt())
-        return android.util.Base64.encodeToString(bb.array(), android.util.Base64.NO_WRAP).toByteArray() + " erix-apk@android\x00".toByteArray()
+        return android.util.Base64.encodeToString(bb.array(), android.util.Base64.NO_WRAP).toByteArray() + " erix-apk@android\u0000".toByteArray()
     }
     private fun toWords(bytes: ByteArray): IntArray { val be = bytes.reversedArray(); val p = be.copyOf(((be.size + 3) / 4) * 4); val bb = ByteBuffer.wrap(p).order(ByteOrder.LITTLE_ENDIAN); val w = IntArray(p.size / 4); for (i in w.indices) w[i] = bb.int; return w }
 }
