@@ -1,0 +1,110 @@
+name: Build ERIX APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git zip unzip \
+            openjdk-17-jdk-headless \
+            autoconf automake autoconf-archive \
+            libtool libtool-bin libltdl-dev \
+            pkg-config m4 bison flex gettext \
+            zlib1g-dev libncurses5-dev libncursesw5-dev \
+            libtinfo5 libtinfo6 cmake libffi-dev libssl-dev
+
+      - name: Verify toolchain
+        run: |
+          echo "=== libtoolize ==="
+          which libtoolize && libtoolize --version | head -1
+          echo "=== autoreconf ==="
+          which autoreconf && autoreconf --version | head -1
+          echo "=== autoconf ==="
+          which autoconf && autoconf --version | head -1
+          echo "=== aclocal ==="
+          which aclocal && aclocal --version | head -1
+
+      - name: Install buildozer (pinned stable)
+        run: |
+          python -m pip install --upgrade pip
+          pip install buildozer==1.5.0 cython==0.29.36 virtualenv
+
+      - name: Cache buildozer global
+        uses: actions/cache@v4
+        with:
+          path: ~/.buildozer
+          key: bz-global-7a-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+
+      - name: Cache buildozer project
+        uses: actions/cache@v4
+        with:
+          path: .buildozer
+          key: bz-proj-7a-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+
+      - name: Clean stale builds
+        run: |
+          rm -rf .buildozer/android/platform/build-*/build/libffi* 2>/dev/null || true
+          rm -rf .buildozer/android/platform/build-*/build/libffi_* 2>/dev/null || true
+          echo "Cleaned stale libffi"
+
+      - name: Build APK
+        env:
+          LIBTOOLIZE: libtoolize
+          ACLOCAL_PATH: /usr/share/aclocal
+          LT_SYS_LIBRARY_PATH: /lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu
+          AUTORECONF: autoreconf
+          LIBFFI_VERSION: "3.4.2"
+          LDFLAGS: "-L/lib/x86_64-linux-gnu -L/usr/lib/x86_64-linux-gnu"
+          CPPFLAGS: "-I/usr/include -I/usr/include/x86_64-linux-gnu"
+        run: |
+          set -o pipefail
+          yes | buildozer -v android debug 2>&1 | tee build.log
+
+      - name: Debug artifacts
+        if: always()
+        run: |
+          echo "=== bin/ contents ==="
+          ls -la bin/ 2>/dev/null || echo "no bin/"
+          echo ""
+          echo "=== find all APK ==="
+          find . -name "*.apk" -type f 2>/dev/null || echo "no APK"
+          echo ""
+          echo "=== build result ==="
+          grep -E "Command failed|Android packaging done|BUILD SUCCESSFUL|BUILD FAILED" build.log 2>/dev/null | tail -10
+
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: erix-apk
+          path: |
+            bin/*.apk
+            .buildozer/android/platform/build-*/dists/*/bin/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload log on fail
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          retention-days: 7

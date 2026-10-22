@@ -1,0 +1,56 @@
+name: Build ERIX APK
+on: [push, workflow_dispatch]
+
+jobs:
+  build-android:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git zip unzip openjdk-17-jdk-headless \
+            autoconf libtool pkg-config zlib1g-dev \
+            libncurses5-dev libncursesw5-dev libtinfo5 \
+            cmake libffi-dev libssl-dev
+
+      - name: Install Buildozer
+        run: |
+          pip install --upgrade pip
+          pip install "buildozer==1.5.0" "cython<3.0"
+
+      - name: Build APK with buildozer
+        shell: bash
+        run: |
+          set -o pipefail  # Pastikan jika buildozer gagal, step ini ikut gagal
+          export PATH=$PATH:~/.local/bin
+          buildozer -v android debug
+
+      - name: Find APK
+        id: find_apk
+        shell: bash
+        run: |
+          echo "Mencari file APK..."
+          # Cari di bin/ atau di dalam .buildozer dists
+          APK_PATH=$(find . -name "*.apk" -type f | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            echo "❌ Tidak ada file .apk yang terbentuk!"
+            exit 1
+          fi
+          echo "✅ APK ditemukan di: $APK_PATH"
+          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: erix-pushpull-apk
+          path: ${{ steps.find_apk.outputs.apk_path }}
+          if-no-files-found: error

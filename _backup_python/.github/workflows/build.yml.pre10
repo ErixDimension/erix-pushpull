@@ -1,0 +1,83 @@
+name: Build ERIX APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    runs-on: ubuntu-22.04
+    container:
+      image: kivy/buildozer:latest
+      options: --user root
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Verify container toolchain
+        run: |
+          echo "=== Python ==="
+          python3 --version
+          echo "=== Cython ==="
+          python3 -c "import Cython; print('Cython:', Cython.__version__)" 2>/dev/null || echo "n/a"
+          echo "=== Buildozer ==="
+          buildozer --version 2>&1 | head -1
+          echo "=== Java ==="
+          java -version 2>&1 | head -1
+          echo "=== libtoolize ==="
+          which libtoolize && libtoolize --version | head -1
+          echo "=== autoconf ==="
+          which autoconf && autoconf --version | head -1
+          echo "=== Disk ==="
+          df -h / | tail -1
+
+      - name: Cache buildozer global
+        uses: actions/cache@v4
+        with:
+          path: /root/.buildozer
+          key: docker-bz-global-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+
+      - name: Cache buildozer project
+        uses: actions/cache@v4
+        with:
+          path: .buildozer
+          key: docker-bz-proj-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+
+      - name: Build APK
+        run: |
+          set -o pipefail
+          yes | buildozer -v android debug 2>&1 | tee build.log
+
+      - name: Debug artifacts
+        if: always()
+        run: |
+          echo "=== bin/ ==="
+          ls -la bin/ 2>/dev/null || echo "no bin/"
+          echo ""
+          echo "=== find APK ==="
+          find . -name "*.apk" -type f 2>/dev/null || echo "no APK"
+          echo ""
+          echo "=== build result ==="
+          grep -E "Command failed|Android packaging done|BUILD SUCCESSFUL|BUILD FAILED" build.log 2>/dev/null | tail -10
+
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: erix-apk
+          path: |
+            bin/*.apk
+            .buildozer/android/platform/build-*/dists/*/bin/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload log on fail
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          retention-days: 7
