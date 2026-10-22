@@ -15,6 +15,7 @@ import com.erix.twrp.databinding.ActivityMainBinding
 import com.erix.twrp.ui.BrowserActivity
 import com.erix.twrp.transfer.AdbRuntime
 import kotlinx.coroutines.*
+import kotlinx.coroutines.delay
 class MainActivity : AppCompatActivity() {
     private lateinit var b: ActivityMainBinding; private val scope = CoroutineScope(Dispatchers.Main)
     private val permLauncher = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
@@ -36,7 +37,11 @@ class MainActivity : AppCompatActivity() {
                     Toast.makeText(this@MainActivity, "Izin USB belum diberikan. Mohon izinkan.", Toast.LENGTH_LONG).show()
                     return@launch
                 }
-                val conn = mgr.openDevice(usbDev)
+                var conn = mgr.openDevice(usbDev)
+                if (conn == null) {
+                    delay(500)
+                    conn = mgr.openDevice(usbDev)
+                }
                 if (conn == null) {
                     b.tvDevice.text = "Gagal: openDevice null (Izin ditolak/device sibuk)"
                     Toast.makeText(this@MainActivity, "Gagal membuka USB. Coba cabut & colok ulang kabel.", Toast.LENGTH_LONG).show()
