@@ -1,7 +1,6 @@
 package com.erix.twrp.adb
 
 import android.hardware.usb.*
-import android.os.Build
 import com.erix.twrp.util.DebugLogger
 import kotlinx.coroutines.*
 import java.io.*
@@ -57,17 +56,13 @@ class AdbUsbTransport(
 
         try { connection.setInterface(intf); DebugLogger.log("setInterface OK.") } catch (e: Exception) { DebugLogger.log("setInterface warning: ${e.message}") }
 
-        // clearHalt hanya tersedia di API 28+
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            try {
-                connection.clearHalt(inEp)
-                connection.clearHalt(outEp)
-                DebugLogger.log("Endpoint halt dibersihkan (API 28+).")
-            } catch (e: Exception) {
-                DebugLogger.log("clearHalt warning: ${e.message}")
-            }
-        } else {
-            DebugLogger.log("API < 28, clearHalt di-skip.")
+        // clearHalt langsung tanpa Build check (minSdk 28)
+        try {
+            connection.clearHalt(inEp)
+            connection.clearHalt(outEp)
+            DebugLogger.log("Endpoint halt dibersihkan.")
+        } catch (e: Exception) {
+            DebugLogger.log("clearHalt warning: ${e.message}")
         }
 
         Thread.sleep(200)
@@ -95,9 +90,7 @@ class AdbUsbTransport(
                 if (retries < 2) {
                     retries++
                     DebugLogger.log("USB Read Stall ($n). Retry $retries/2...")
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                        try { connection.clearHalt(inEp) } catch (_: Exception) {}
-                    }
+                    try { connection.clearHalt(inEp) } catch (_: Exception) {}
                     Thread.sleep(100)
                     continue
                 }
