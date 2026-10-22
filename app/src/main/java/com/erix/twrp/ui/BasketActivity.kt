@@ -1,5 +1,4 @@
 package com.erix.twrp.ui
-import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -13,7 +12,6 @@ class BasketActivity : AppCompatActivity() {
         if (BasketManager.items.isEmpty()) { finish(); return }
         adapter = BasketAdapter(BasketManager.items); b.rvBasket.layoutManager = LinearLayoutManager(this); b.rvBasket.adapter = adapter
         b.btnCancel.setOnClickListener { BasketManager.clear(); finish() }
-        // Note: fitur Push/Pull keranjang belum diimplementasikan secara penuh di tahap MVP ini
         b.btnPush.setOnClickListener { Toast.makeText(this, "Fitur Keranjang menyusul", Toast.LENGTH_SHORT).show() }
         b.btnPull.setOnClickListener { Toast.makeText(this, "Fitur Keranjang menyusul", Toast.LENGTH_SHORT).show() }
     }

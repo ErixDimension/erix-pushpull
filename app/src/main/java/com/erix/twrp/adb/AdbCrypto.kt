@@ -1,10 +1,8 @@
 package com.erix.twrp.adb
-
 import android.security.keystore.*
 import java.security.*
 import java.security.interfaces.RSAPublicKey
 import java.nio.*
-
 class AdbCrypto(private val alias: String = "erix_adb_key") {
     private val ks: KeyStore = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
     private val keyPair: KeyPair by lazy {

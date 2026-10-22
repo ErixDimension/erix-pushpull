@@ -11,10 +11,10 @@ class BrowserAdapter(private var items: List<StorageItem> = emptyList(), private
     inner class VH(val b: ItemBrowserRowBinding) : RecyclerView.ViewHolder(b.root)
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) = VH(ItemBrowserRowBinding.inflate(LayoutInflater.from(parent.context), parent, false))
     override fun onBindViewHolder(holder: VH, position: Int) {
-        val it = items[position]
-        holder.b.tvIcon.text = when { it.isDir -> "📁"; it.isArchive -> "📦"; else -> "📄" }
-        holder.b.tvName.text = it.name; holder.b.tvPath.text = it.path; holder.b.tvSize.text = if (it.isDir) "—" else FormatUtil.size(it.size); holder.b.tvMark.text = if (BasketManager.has(it.path)) "✓" else ""
-        holder.b.root.setBackgroundColor(when { position == cursor -> 0xFFD70087.toInt(); BasketManager.has(it.path) -> 0xFF2A2A2A.toInt(); else -> 0 })
+        val item = items[position]
+        holder.b.tvIcon.text = when { item.isDir -> "📁"; item.isArchive -> "📦"; else -> "📄" }
+        holder.b.tvName.text = item.name; holder.b.tvPath.text = item.path; holder.b.tvSize.text = if (item.isDir) "—" else FormatUtil.size(item.size); holder.b.tvMark.text = if (BasketManager.has(item.path)) "✓" else ""
+        holder.b.root.setBackgroundColor(when { position == cursor -> 0xFFD70087.toInt(); BasketManager.has(item.path) -> 0xFF2A2A2A.toInt(); else -> 0 })
         holder.b.root.setOnClickListener { cursor = position; notifyDataSetChanged(); onClick(position) }
     }
     override fun getItemCount() = items.size

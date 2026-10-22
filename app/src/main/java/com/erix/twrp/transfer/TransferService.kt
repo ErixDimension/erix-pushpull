@@ -28,21 +28,14 @@ class TransferService : LifecycleService() {
         val (transport, serial) = AdbRuntime.active ?: run { (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(NOTIF_ID, buildNotif("Device tidak terhubung", 0, 0)); stopSelf(); return START_NOT_STICKY }
         adb = AdbManager(this, transport); local = LocalStorageManager(this); resume = ResumeManager(this); engine = TransferEngine(adb, local, RemoteStorageManager(adb), resume, serial)
         job = lifecycleScope.launch {
-            try {
-                engine.transfer(action, src, dst).collect { ev ->
-                    events.tryEmit(ev)
-                    if (ev is TransferEvent.Progress) (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(NOTIF_ID, buildNotif("${FormatSize.human(ev.done)} / ${FormatSize.human(ev.total)}", ev.done, ev.total))
-                }
-            } finally { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
+            try { engine.transfer(action, src, dst).collect { ev -> events.tryEmit(ev); if (ev is TransferEvent.Progress) (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(NOTIF_ID, buildNotif("${FormatSize.human(ev.done)} / ${FormatSize.human(ev.total)}", ev.done, ev.total)) } }
+            finally { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
         }
         return START_NOT_STICKY
     }
     override fun onDestroy() { job?.cancel(); super.onDestroy() }
     override fun onBind(intent: Intent): IBinder? { super.onBind(intent); return null }
     private fun createChannel() { if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) { (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(NotificationChannel(CHANNEL_ID, "ERIX Transfer", NotificationManager.IMPORTANCE_LOW).apply { setShowBadge(false) }) } }
-    private fun buildNotif(text: String, done: Long, total: Long): Notification {
-        val b = NotificationCompat.Builder(this, CHANNEL_ID).setSmallIcon(android.R.drawable.stat_sys_download).setContentTitle("ERIX Transfer").setContentText(text).setOngoing(true).setOnlyAlertOnce(true)
-        if (total > 0) b.setProgress(100, ((done * 100) / total).toInt(), false); return b.build()
-    }
+    private fun buildNotif(text: String, done: Long, total: Long): Notification { val b = NotificationCompat.Builder(this, CHANNEL_ID).setSmallIcon(android.R.drawable.stat_sys_download).setContentTitle("ERIX Transfer").setContentText(text).setOngoing(true).setOnlyAlertOnce(true); if (total > 0) b.setProgress(100, ((done * 100) / total).toInt(), false); return b.build() }
     private object FormatSize { fun human(b: Long): String { var v = b.toDouble(); val u = listOf("B","KB","MB","GB"); var i = 0; while (v >= 1024 && i < u.size - 1) { v /= 1024; i++ }; return if (i == 0) "%d B".format(v.toLong()) else "%.1f %s".format(v, u[i]) } }
 }

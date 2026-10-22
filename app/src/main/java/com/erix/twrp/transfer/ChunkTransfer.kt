@@ -73,10 +73,7 @@ class ChunkTransfer(private val adb: AdbManager, private val local: LocalStorage
         if (adb.remoteSize(devChunk) != len) { adb.shell("rm -f '${q(devChunk)}'"); return ChunkResult.Fail("dd chunk size mismatch") }
         if (!adb.pull(devChunk, localChunk)) return ChunkResult.Fail("Pull chunk gagal")
         if (localChunk.length() != len) return ChunkResult.Fail("Local chunk size mismatch")
-        
-        // --- PERBAIKAN: FileOutputStream untuk append (karena appendBytes tidak ada di Kotlin) ---
         java.io.FileOutputStream(partPath, true).use { it.write(localChunk.readBytes()) }
-        
         localChunk.delete(); adb.shell("rm -f '${q(devChunk)}'")
         if (File(partPath).length() != offset + len) return ChunkResult.Fail("Append gagal")
         return ChunkResult.Ok

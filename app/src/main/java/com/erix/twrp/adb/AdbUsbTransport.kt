@@ -1,11 +1,8 @@
 package com.erix.twrp.adb
-
 import android.hardware.usb.*
 import kotlinx.coroutines.*
 import java.io.*
 import java.nio.*
-import java.util.*
-
 class AdbUsbTransport(private val usbManager: UsbManager, private val device: UsbDevice, private val connection: UsbDeviceConnection, private val crypto: AdbCrypto) : Closeable {
     private val intf: UsbInterface; private val inEp: UsbEndpoint; private val outEp: UsbEndpoint
     private var maxPayload = AdbProtocol.A_MAX_PAYLOAD_V1; private var nextLocalId = 1

@@ -3,15 +3,7 @@
     <TextView android:id="@+id/tvTitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="🧺 KERANJANG" android:textColor="#FFC107" android:textSize="22sp" android:textStyle="bold" android:gravity="center" android:paddingBottom="8dp"/>
     <TextView android:id="@+id/tvSummary" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#B0BEC5" android:gravity="center" android:paddingBottom="16dp"/>
     <androidx.recyclerview.widget.RecyclerView android:id="@+id/rvBasket" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:paddingBottom="16dp"/>
-    <Button android:id="@+id/btnPush" android:layout_width="match_parent" android:layout_height="56dp" android:text="@string/basket_push" android:layout_marginBottom="8dp"/>
-    <Button android:id="@+id/btnPull" android:layout_width="match_parent" android:layout_height="56dp" android:text="@string/basket_pull" android:layout_marginBottom="8dp"/>
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginBottom="8dp">
-        <Button android:id="@+id/btnCopy" android:layout_width="0dp" android:layout_height="56dp" android:layout_weight="1" android:text="@string/basket_copy" android:layout_marginEnd="4dp"/>
-        <Button android:id="@+id/btnMove" android:layout_width="0dp" android:layout_height="56dp" android:layout_weight="1" android:text="@string/basket_move" android:layout_marginStart="4dp"/>
-    </LinearLayout>
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginBottom="8dp">
-        <Button android:id="@+id/btnExtract" android:layout_width="0dp" android:layout_height="56dp" android:layout_weight="1" android:text="@string/basket_extract" android:layout_marginEnd="4dp"/>
-        <Button android:id="@+id/btnDelete" android:layout_width="0dp" android:layout_height="56dp" android:layout_weight="1" android:text="@string/basket_delete" android:layout_marginStart="4dp"/>
-    </LinearLayout>
-    <Button android:id="@+id/btnCancel" android:layout_width="match_parent" android:layout_height="56dp" android:text="@string/basket_cancel"/>
+    <Button android:id="@+id/btnPush" android:layout_width="match_parent" android:layout_height="56dp" android:text="📤 PUSH" android:layout_marginBottom="8dp"/>
+    <Button android:id="@+id/btnPull" android:layout_width="match_parent" android:layout_height="56dp" android:text="📥 PULL" android:layout_marginBottom="8dp"/>
+    <Button android:id="@+id/btnCancel" android:layout_width="match_parent" android:layout_height="56dp" android:text="❌ BATAL"/>
 </LinearLayout>

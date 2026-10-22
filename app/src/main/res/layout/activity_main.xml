@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:padding="24dp" android:background="#0B0F14">
     <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="✦ ERIX TWRP ✦" android:textColor="#00E5FF" android:textSize="28sp" android:gravity="center" android:textStyle="bold"/>
-    <TextView android:id="@+id/tvDevice" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Detecting..." android:textColor="#FFFFFF" android:textSize="14sp" android:gravity="center" android:paddingTop="8dp" android:paddingBottom="32dp"/>
-    <Button android:id="@+id/btnPush" android:layout_width="match_parent" android:layout_height="72dp" android:text="@string/menu_push" android:textSize="18sp" android:layout_marginBottom="12dp"/>
-    <Button android:id="@+id/btnPull" android:layout_width="match_parent" android:layout_height="72dp" android:text="@string/menu_pull" android:textSize="18sp" android:layout_marginBottom="12dp"/>
-    <Button android:id="@+id/btnRefresh" android:layout_width="match_parent" android:layout_height="56dp" android:text="@string/menu_refresh" android:layout_marginBottom="12dp"/>
-    <Button android:id="@+id/btnExit" android:layout_width="match_parent" android:layout_height="56dp" android:text="@string/menu_exit"/>
+    <TextView android:id="@+id/tvDevice" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Menunggu device..." android:textColor="#FFFFFF" android:textSize="14sp" android:gravity="center" android:paddingTop="8dp" android:paddingBottom="32dp"/>
+    <Button android:id="@+id/btnPush" android:layout_width="match_parent" android:layout_height="72dp" android:text="📤 PUSH (A → B)" android:textSize="18sp" android:layout_marginBottom="12dp"/>
+    <Button android:id="@+id/btnPull" android:layout_width="match_parent" android:layout_height="72dp" android:text="📥 PULL (B → A)" android:textSize="18sp" android:layout_marginBottom="12dp"/>
+    <Button android:id="@+id/btnRefresh" android:layout_width="match_parent" android:layout_height="56dp" android:text="🔄 Refresh Device" android:layout_marginBottom="12dp"/>
+    <Button android:id="@+id/btnExit" android:layout_width="match_parent" android:layout_height="56dp" android:text="❌ Keluar"/>
 </LinearLayout>
