@@ -20,6 +20,8 @@ android {
     buildFeatures { viewBinding true }
 }
 dependencies {
+    implementation "com.github.Flyfish233:spake2-java:1.1.1"
+    implementation "org.conscrypt:conscrypt-openjdk-uber:2.5.2"
     implementation "com.flyfishxu:kadb:2.1.5"
     implementation "com.squareup.okio:okio:3.9.0"
     implementation 'androidx.core:core-ktx:1.12.0'
