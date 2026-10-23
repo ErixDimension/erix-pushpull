@@ -1,0 +1,23 @@
+#!/data/data/com.termux/files/usr/bin/bash
+set -uo pipefail
+cd "$(git rev-parse --show-toplevel)"
+FAIL=0
+# brace balance
+for f in $(git diff --cached --name-only --diff-filter=ACM | grep '\.kt$'); do
+    [ -f "$f" ] || continue
+    b=$(awk '{o+=gsub(/{/,"{"); c+=gsub(/}/,"}")} END{print o-c}' "$f")
+    [ "$b" != "0" ] && echo "BAD brace $f: $b" && FAIL=1
+done
+# marker
+for f in $(git diff --cached --name-only --diff-filter=ACM | grep -E "AdbLibUsbTransport|AdbUsbTransport|AdbDeviceWatcher"); do
+    [ -f "$f" ] || continue
+    head -5 "$f" | grep -q "DO NOT DELETE" || { echo "WARN marker hilang: $f"; FAIL=1; }
+done
+# import duplikat
+for f in $(git diff --cached --name-only --diff-filter=ACM | grep '\.kt$'); do
+    [ -f "$f" ] || continue
+    d=$(grep "^import " "$f" | sort | uniq -d)
+    [ -n "$d" ] && echo "BAD import duplikat: $f" && FAIL=1
+done
+[ "$FAIL" = "1" ] && { echo "Commit dibatalkan. Cek pesan di atas."; exit 1; }
+exit 0
