@@ -15,6 +15,11 @@ import com.erix.ptp.manager.LocalFileManager
 import com.erix.ptp.util.DebugLogger
 import kotlinx.coroutines.launch
 
+/**
+ * BrowserFragment — dual-mode: satu instance tab LOCAL, satu tab REMOTE.
+ * REMOTE: AdbFileManager (via AdbDeviceWatcher.transport)
+ * LOCAL : LocalFileManager (java.io.File)
+ */
 class BrowserFragment : Fragment() {
 
     private var _b: FragmentBrowserBinding? = null
@@ -36,11 +41,11 @@ class BrowserFragment : Fragment() {
         this.selectionCallback = callback
     }
 
-    /** Dipanggil oleh Activity saat createFragment untuk restore state terakhir. */
     fun setInitialPath(path: String) { this.initialPath = path }
 
-    /** Dipanggil oleh Activity saat onPause untuk simpan state. */
     fun getCurrentPath(): String? = navStack.lastOrNull()?.path
+
+    fun isRemoteSide(): Boolean = isRemote
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -102,7 +107,6 @@ class BrowserFragment : Fragment() {
                     emptyList()
                 }
             }
-            // Guard: view mungkin sudah destroyed saat async selesai
             val vb2 = _b ?: return@launch
             vb2.tvPath.text = path
             adapter.setItems(entries)
@@ -125,6 +129,9 @@ class BrowserFragment : Fragment() {
         }
         return false
     }
+
+    /** Reload isi folder saat ini. Dipanggil Activity setelah transfer selesai. */
+    fun refresh() { loadCurrent() }
 
     fun clearSelection() { _b?.let { adapter.clearSelection() } }
 
