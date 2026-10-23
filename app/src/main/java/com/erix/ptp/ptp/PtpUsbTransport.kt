@@ -132,13 +132,32 @@ class PtpUsbTransport(
         return ByteBuffer.wrap(data, 4, 4).order(ByteOrder.LITTLE_ENDIAN).int
     }
 
+    /** Kuras buffer endpoint IN supaya tidak ada data nyangkut. */
+    fun drain() {
+        try {
+            val buf = ByteArray(4096)
+            var stall = 0
+            while (stall < 2) {
+                val n = connection.bulkTransfer(epIn, buf, buf.size, 200)
+                if (n <= 0) stall++ else stall = 0
+            }
+        } catch (_: Exception) {}
+    }
+
+    /** Pulihkan session setelah error. */
+    fun recover() {
+        try { closeSession() } catch (_: Exception) {}
+        drain()
+        try { openSession() } catch (_: Exception) {}
+    }
+
     data class ObjectEntry(val handle: Int, val name: String, val size: Long, val isDir: Boolean)
 
     fun listRoot(storageId: Int): List<ObjectEntry> {
         txn++
         sendCommand(OP_GET_OBJECT_HANDLES, intArrayOf(storageId, 0, PARENT_ROOT))
-        val data = readFullData()
-        val resp = readResponse()
+        val data = try { readFullData() } catch (e: Exception) { drain(); throw e }
+        val resp = try { readResponse() } catch (e: Exception) { drain(); throw e }
         if (resp.code != RESP_OK || data.size < 4) throw PtpException("GetObjectHandles gagal")
 
         val bb = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
@@ -152,8 +171,8 @@ class PtpUsbTransport(
     private fun getObjectInfo(handle: Int): ObjectEntry? {
         txn++
         sendCommand(OP_GET_OBJECT_INFO, intArrayOf(handle))
-        val data = try { readFullData() } catch (_: Exception) { return null }
-        val resp = try { readResponse() } catch (_: Exception) { return null }
+        val data = try { readFullData() } catch (e: Exception) { drain(); return null }
+        val resp = try { readResponse() } catch (e: Exception) { drain(); return null }
         if (resp.code != RESP_OK || data.size <= 52) return null
 
         val bb = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
@@ -229,24 +248,30 @@ class PtpUsbTransport(
         txn++
         sendCommand(OP_GET_OBJECT, intArrayOf(entry.handle))
 
-        FileOutputStream(destFile).use { out ->
-            var received = 0L; var first = true; var stall = 0
-            val buf = ByteArray(BULK_BUF)
-            while (received < entry.size) {
-                val n = connection.bulkTransfer(epIn, buf, buf.size, BULK_TIMEOUT)
-                if (n < 0) { stall++; if (stall > 3) break; continue }
-                stall = 0
-                val offset = if (first) 12 else 0
-                first = false
-                if (n <= offset) continue
-                out.write(buf, offset, n - offset)
-                received += (n - offset)
-                onProgress(received)
+        var success = false
+        try {
+            FileOutputStream(destFile).use { out ->
+                var received = 0L; var first = true; var stall = 0
+                val buf = ByteArray(BULK_BUF)
+                while (received < entry.size) {
+                    val n = connection.bulkTransfer(epIn, buf, buf.size, BULK_TIMEOUT)
+                    if (n < 0) { stall++; if (stall > 3) break; continue }
+                    stall = 0
+                    val offset = if (first) 12 else 0
+                    first = false
+                    if (n <= offset) continue
+                    out.write(buf, offset, n - offset)
+                    received += (n - offset)
+                    onProgress(received)
+                }
+                if (received != entry.size) throw PtpException("Pull tidak lengkap: $received/${entry.size}")
             }
-            if (received != entry.size) throw PtpException("Pull tidak lengkap: $received/${entry.size}")
+            val resp = readResponse()
+            if (resp.code != RESP_OK) throw PtpException("GetObject: 0x${resp.code.toString(16)}")
+            success = true
+        } finally {
+            if (!success) drain()
         }
-        val resp = readResponse()
-        if (resp.code != RESP_OK) throw PtpException("GetObject: 0x${resp.code.toString(16)}")
     }
 
     override fun close() {
