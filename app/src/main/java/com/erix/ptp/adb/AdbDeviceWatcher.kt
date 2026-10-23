@@ -43,10 +43,10 @@ object AdbDeviceWatcher {
                     }
                     ACTION_USB_PERM -> {
                         if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
-                            DebugLogger.log("Izin diberikan. Menunggu sebentar...")
+                            DebugLogger.log("Izin diberikan. Delay 1s...")
                             Handler(Looper.getMainLooper()).postDelayed({
                                 getDevice(intent)?.let { connect(it) }
-                            }, 1000) // Jeda 1 detik
+                            }, 1000)
                         } else {
                             DebugLogger.log("Izin USB ditolak")
                         }
@@ -86,18 +86,45 @@ object AdbDeviceWatcher {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val manager = usbManager ?: return@launch
-                val connection = manager.openDevice(device) ?: throw IllegalStateException("Gagal membuka koneksi USB (openDevice null)")
+                
+                // 1. Cari Interface & Endpoint
+                var adbIntf: UsbInterface? = null
+                for (i in 0 until device.interfaceCount) {
+                    val it = device.getInterface(i)
+                    if (it.interfaceClass == 0xFF && it.interfaceSubclass == 0x42 && it.interfaceProtocol == 0x01) {
+                        adbIntf = it; break
+                    }
+                }
+                if (adbIntf == null) throw IllegalStateException("Bukan interface ADB")
+                
+                var fi: UsbEndpoint? = null; var fo: UsbEndpoint? = null
+                for (i in 0 until adbIntf.endpointCount) {
+                    val ep = adbIntf.getEndpoint(i)
+                    if (ep.type == UsbConstants.USB_ENDPOINT_XFER_BULK) {
+                        if (ep.direction == UsbConstants.USB_DIR_IN) fi = ep
+                        if (ep.direction == UsbConstants.USB_DIR_OUT) fo = ep
+                    }
+                }
+                if (fi == null || fo == null) throw IllegalStateException("Endpoint tidak lengkap")
 
-                DebugLogger.log("Membuat Dadb instance...")
-                // Dadb membutuhkan AdbKeyPair. Kita gunakan yang di-generate atau baca dari file.
-                val keyPair = AdbKeyPair.read(null, null)
-                val dadb = Dadb.create(connection, keyPair)
+                // 2. Buka Koneksi
+                val connection = manager.openDevice(device) ?: throw IllegalStateException("openDevice null")
+                if (!connection.claimInterface(adbIntf, true)) throw IllegalStateException("Claim interface gagal")
+
+                // 3. Buat KeyPair & Transport
+                DebugLogger.log("Membuat KeyPair & Transport...")
+                val keyPair = AdbKeyPair.generate()
+                val transport = UsbTransport(connection, fi, fo)
+                
+                // 4. Inisialisasi Dadb
+                DebugLogger.log("Membuat Dadb Instance...")
+                val dadb = Dadb.create(transport, keyPair)
                 
                 dadbInstance = dadb
                 DebugLogger.log("✓ DADB TERHUBUNG!")
                 DebugLogger.setStatus("✓ Dadb Terhubung")
                 
-                // Test koneksi dengan perintah shell sederhana
+                // 5. Test Shell
                 val resp = dadb.shell("echo ERIX_OK").output
                 DebugLogger.log("Shell test: $resp")
 
