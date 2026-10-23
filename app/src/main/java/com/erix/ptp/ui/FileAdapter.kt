@@ -43,15 +43,21 @@ class FileAdapter(
             else -> "📄"
         }
         holder.name.text = entry.name
-        holder.size.text = if (entry.isDir) "" else formatSize(entry.size)
-
-        if (entry.isDir) {
-            holder.check.visibility = View.GONE
-        } else {
-            holder.check.visibility = View.VISIBLE
-            holder.check.isChecked = item.selected
+        holder.size.text = when {
+            entry.isDir -> if (item.selected) "✓ Folder terpilih" else "Folder (tahan untuk pilih)"
+            else -> formatSize(entry.size)
         }
 
+        // Folder: checkbox hanya muncul kalau sudah selected via long-press
+        // File: checkbox selalu muncul
+        if (entry.isDir) {
+            holder.check.visibility = if (item.selected) View.VISIBLE else View.GONE
+        } else {
+            holder.check.visibility = View.VISIBLE
+        }
+        holder.check.isChecked = item.selected
+
+        // Klik biasa: folder masuk, file toggle checkbox
         holder.root.setOnClickListener {
             if (entry.isDir) onFolderClick(entry)
             else {
@@ -59,6 +65,14 @@ class FileAdapter(
                 notifyItemChanged(position)
                 onSelectionChanged()
             }
+        }
+
+        // Long-press: folder toggle checkbox, file juga toggle
+        holder.root.setOnLongClickListener {
+            item.selected = !item.selected
+            notifyItemChanged(position)
+            onSelectionChanged()
+            true
         }
     }
 

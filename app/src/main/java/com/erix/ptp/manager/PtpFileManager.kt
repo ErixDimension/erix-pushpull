@@ -34,5 +34,24 @@ class PtpFileManager(
         } catch (_: Exception) { false }
     }
 
+    /** Walk folder recursively, return semua file (bukan folder). */
+    suspend fun walkFolder(folderHandle: Int): List<FileEntry.Remote> = withContext(Dispatchers.IO) {
+        val result = mutableListOf<FileEntry.Remote>()
+        val queue = mutableListOf(folderHandle)
+        var safety = 0
+        while (queue.isNotEmpty() && safety < 10000) {
+            safety++
+            val h = queue.removeAt(0)
+            try {
+                val children = list(h)
+                for (c in children) {
+                    if (c.isDir) queue.add(c.handle)
+                    else result.add(c)
+                }
+            } catch (_: Exception) {}
+        }
+        result
+    }
+
     fun rootHandle(): Int = PtpUsbTransport.PARENT_ROOT
 }
