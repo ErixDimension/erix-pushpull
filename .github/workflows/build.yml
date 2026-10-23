@@ -14,10 +14,10 @@ jobs:
           java-version: '17'
           distribution: 'zulu'
 
-      - name: Setup Gradle 8.11.1
+      - name: Setup Gradle (Tanpa Cache)
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.11.1'
+          cache-disabled: true # MATIKAN CACHE UNTUK HINDARI EGRESS LIMIT
 
       - name: Build with Gradle
         run: gradle assembleDebug

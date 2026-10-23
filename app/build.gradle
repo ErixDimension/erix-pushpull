@@ -6,8 +6,8 @@ android {
         applicationId "com.erix.ptp"
         minSdk 26
         targetSdk 34
-        versionCode 104
-        versionName "1.0.104-DADB"
+        versionCode 105
+        versionName "1.0.105-NO-CACHE"
     }
     buildTypes {
         debug { signingConfig signingConfigs.debug }
