@@ -6,8 +6,8 @@ android {
         applicationId "com.erix.ptp"
         minSdk 26
         targetSdk 34
-        versionCode 105
-        versionName "1.0.105-NO-CACHE"
+        versionCode 106
+        versionName "1.0.106-DADB-FIX"
     }
     buildTypes {
         debug { signingConfig signingConfigs.debug }
@@ -35,6 +35,7 @@ dependencies {
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0'
     // Library Utama
     implementation "dev.mobile:dadb:1.2.10"
+    implementation "com.github.MuntashirAkon:spake2-java:1.1.0"
     // Dependensi transitif yang dibutuhkan dadb untuk pairing
-    implementation "com.github.MuntashirAkon.spake2-java:spake2-android:1.1.0"
+    
 }
