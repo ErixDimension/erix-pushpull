@@ -4,6 +4,7 @@ import android.app.PendingIntent
 import android.content.*
 import android.hardware.usb.*
 import android.os.Build
+import android.widget.Toast
 import com.erix.ptp.util.DebugLogger
 import kotlinx.coroutines.*
 
@@ -11,6 +12,9 @@ object PtpWatcher {
     private const val ACTION_USB_PERM = "com.erix.ptp.USB_PERMISSION"
     @Volatile var transport: PtpUsbTransport? = null; private set
     @Volatile var storageId: Int = -1; private set
+    
+    @Volatile var adbNative: AdbNativeTransport? = null; private set
+    
     private var usbManager: UsbManager? = null
     private var appContext: Context? = null
     private var receiver: BroadcastReceiver? = null
@@ -30,12 +34,13 @@ object PtpWatcher {
                         if (d.deviceId == lastId && now - lastTime < 1000) return
                         lastId = d.deviceId; lastTime = now
                         DebugLogger.log("USB Dicolok: ${d.deviceName}")
-                        if (isPtp(d)) requestPerm(d) else DebugLogger.log("Bukan PTP")
+                        requestPerm(d)
                     }
                     UsbManager.ACTION_USB_DEVICE_DETACHED -> {
                         DebugLogger.log("USB Dicabut")
                         try { transport?.closeSession(); transport?.close() } catch (_: Exception) {}
-                        transport = null; storageId = -1
+                        try { adbNative?.close() } catch (_: Exception) {}
+                        transport = null; storageId = -1; adbNative = null
                         DebugLogger.setStatus("Menunggu device...")
                     }
                     ACTION_USB_PERM -> {
@@ -60,17 +65,6 @@ object PtpWatcher {
         if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
         else @Suppress("DEPRECATION") intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
 
-    private fun isPtp(device: UsbDevice): Boolean {
-        for (i in 0 until device.interfaceCount) {
-            val it = device.getInterface(i)
-            if (it.interfaceClass == 0x06 && it.interfaceSubclass == 0x01 && it.interfaceProtocol == 0x01) {
-                DebugLogger.log("PTP interface ditemukan (i=$i)")
-                return true
-            }
-        }
-        return false
-    }
-
     private fun requestPerm(device: UsbDevice) {
         val m = usbManager ?: return
         if (m.hasPermission(device)) { connect(device); return }
@@ -84,22 +78,51 @@ object PtpWatcher {
 
     private fun connect(device: UsbDevice) {
         CoroutineScope(Dispatchers.IO).launch {
-            DebugLogger.log("=== v76 ADB NATIVE ===")
+            DebugLogger.log("=== v77 NATIVE ADB START ===")
             try {
                 val conn = usbManager!!.openDevice(device) ?: throw IllegalStateException("openDevice null")
-                DebugLogger.log("Transport init...")
-                val t = PtpUsbTransport(device, conn)
-                DebugLogger.log("OpenSession...")
-                t.openSession()
-                DebugLogger.log("GetStorageId...")
-                val sid = t.getStorageId()
-                DebugLogger.log("Storage = 0x${sid.toString(16)}")
-                transport = t; storageId = sid
-                DebugLogger.log("✓ PTP READY!")
-                DebugLogger.setStatus("✓ PTP Ready (0x${sid.toString(16)})")
+                
+                // Cari interface ADB
+                var adbIntf: UsbInterface? = null
+                for (i in 0 until device.interfaceCount) {
+                    val it = device.getInterface(i)
+                    if (it.interfaceClass == 0xFF && it.interfaceSubclass == 0x42 && it.interfaceProtocol == 0x01) {
+                        adbIntf = it; break
+                    }
+                }
+                
+                if (adbIntf == null) {
+                    DebugLogger.log("⚠ Bukan ADB Interface. Coba PTP...")
+                    val t = PtpUsbTransport(device, conn)
+                    t.openSession()
+                    val sid = t.getStorageId()
+                    transport = t; storageId = sid
+                    DebugLogger.log("✓ PTP READY (fallback)!")
+                    return@launch
+                }
+
+                var fi: UsbEndpoint? = null; var fo: UsbEndpoint? = null
+                for (i in 0 until adbIntf.endpointCount) {
+                    val ep = adbIntf.getEndpoint(i)
+                    if (ep.type == UsbConstants.USB_ENDPOINT_XFER_BULK) {
+                        if (ep.direction == UsbConstants.USB_DIR_IN) fi = ep
+                        if (ep.direction == UsbConstants.USB_DIR_OUT) fo = ep
+                    }
+                }
+
+                if (!conn.claimInterface(adbIntf, true)) throw IllegalStateException("Claim ADB Interface gagal")
+
+                DebugLogger.log("Memulai Native Transport...")
+                val nativeT = AdbNativeTransport(conn, fi!!, fo!!, AdbCrypto())
+                nativeT.connect()
+                
+                adbNative = nativeT
+                DebugLogger.log("✓ ADB Native SIAP DIGUNAKAN!")
+                DebugLogger.setStatus("✓ ADB Terhubung (Native)")
+                
             } catch (e: Exception) {
-                DebugLogger.log("❌ PTP FAIL: ${e.message}")
-                DebugLogger.setStatus("❌ ${e.message}")
+                DebugLogger.log("❌ ADB Gagal: ${e.message}")
+                DebugLogger.setStatus("❌ Gagal: ${e.message}")
             }
         }
     }
