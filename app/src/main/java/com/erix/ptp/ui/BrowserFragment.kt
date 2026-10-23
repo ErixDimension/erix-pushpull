@@ -15,11 +15,6 @@ import com.erix.ptp.manager.LocalFileManager
 import com.erix.ptp.util.DebugLogger
 import kotlinx.coroutines.launch
 
-/**
- * Fragment dual-mode: satu instance untuk tab LOCAL, satu untuk tab REMOTE.
- * REMOTE memakai AdbFileManager (AdbUsbTransport.exec → AdbLib shell).
- * LOCAL memakai java.io.File (LocalFileManager).
- */
 class BrowserFragment : Fragment() {
 
     private var _b: FragmentBrowserBinding? = null
@@ -63,7 +58,6 @@ class BrowserFragment : Fragment() {
         }
 
         b.btnUp.setOnClickListener { goUp() }
-
         loadCurrent()
     }
 
@@ -110,11 +104,14 @@ class BrowserFragment : Fragment() {
         loadCurrent()
     }
 
-    private fun goUp() {
+    /** Return true kalau berhasil naik, false kalau sudah di root. */
+    fun goUp(): Boolean {
         if (navStack.size > 1) {
             navStack.removeAt(navStack.size - 1)
             loadCurrent()
+            return true
         }
+        return false
     }
 
     fun clearSelection() = adapter.clearSelection()

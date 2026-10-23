@@ -6,16 +6,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 
-/**
- * AdbFileManager — analog PtpFileManager tapi pakai AdbUsbTransport (AdbLib shell).
- *
- * Semua operasi file remote device B lewat shell ADB:
- *   list        : `ls -la <path>/`
- *   push        : `cat > <dest>`    (via transport.push)
- *   pull        : `cat <src>`       (via transport.pull)
- *   storage     : `df -k <path>`
- *   walkFolder  : BFS via list()
- */
 class AdbFileManager(private val transport: AdbUsbTransport) {
 
     data class StorageInfo(
@@ -27,17 +17,21 @@ class AdbFileManager(private val transport: AdbUsbTransport) {
     private fun shellQuote(s: String): String =
         "'" + s.replace("'", "'\\''") + "'"
 
+    private fun stripAnsi(s: String): String =
+        s.replace(Regex("\u001B\\[[;\\d]*m"), "")
+
     /**
      * List isi direktori. Entry "." dan ".." difilter keluar.
+     * Pakai `--color=never` + strip ANSI untuk kompatibilitas custom ROM.
      */
     suspend fun list(path: String): List<FileEntry.Remote> = withContext(Dispatchers.IO) {
         val normalized = path.removeSuffix("/").ifEmpty { "/" }
         val out = try {
-            transport.exec("ls -la ${shellQuote(normalized)}/ 2>/dev/null")
+            transport.exec("ls -la --color=never ${shellQuote(normalized)}/ 2>/dev/null")
         } catch (_: Throwable) {
             return@withContext emptyList()
         }
-        out.lines().mapNotNull { parseLsLine(it, normalized) }
+        out.lines().mapNotNull { parseLsLine(stripAnsi(it), normalized) }
     }
 
     private fun parseLsLine(line: String, parentPath: String): FileEntry.Remote? {
@@ -61,7 +55,6 @@ class AdbFileManager(private val transport: AdbUsbTransport) {
         )
     }
 
-    /** Info storage di path tertentu via `df -k`. Return null jika gagal parse. */
     suspend fun getStorageInfo(path: String): StorageInfo? = withContext(Dispatchers.IO) {
         val out = try {
             transport.exec("df -k ${shellQuote(path)} 2>/dev/null")
@@ -70,8 +63,7 @@ class AdbFileManager(private val transport: AdbUsbTransport) {
         }
         val lines = out.lines().filter { it.isNotBlank() }
         if (lines.size < 2) return@withContext null
-        val dataLine = lines[1]
-        val parts = dataLine.trim().split(Regex("\\s+"), limit = 6)
+        val parts = lines[1].trim().split(Regex("\\s+"), limit = 6)
         if (parts.size < 4) return@withContext null
         val totalKb = parts[1].toLongOrNull() ?: return@withContext null
         val freeKb  = parts[3].toLongOrNull() ?: return@withContext null
@@ -82,21 +74,12 @@ class AdbFileManager(private val transport: AdbUsbTransport) {
         )
     }
 
-    /**
-     * Upload satu file lokal → remote dest path (path lengkap di remote).
-     * Contoh: upload(File("/sdcard/a.txt"), "/sdcard/Download/a.txt")
-     */
     suspend fun upload(local: File, remoteDestPath: String): Result<Unit> =
         transport.push(local, remoteDestPath)
 
-    /** Download satu file dari remote source path ke file lokal. */
     suspend fun download(remoteSrcPath: String, local: File): Result<Unit> =
         transport.pull(remoteSrcPath, local)
 
-    /**
-     * Walk rekursif: kembalikan semua FILE (bukan folder) di dalam path.
-     * BFS dengan visited-set untuk cegah infinite loop.
-     */
     suspend fun walkFolder(path: String): List<FileEntry.Remote> = withContext(Dispatchers.IO) {
         val result = mutableListOf<FileEntry.Remote>()
         val queue = ArrayDeque<String>()
