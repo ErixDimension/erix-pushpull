@@ -1,9 +1,11 @@
 cmake_minimum_required(VERSION 3.22.1)
 project("erixadb")
 
-# Tambah log library bawaan Android
 find_library(log-lib log)
 
-add_library(erixadb SHARED native-adb.cpp)
+# Import libusb dari folder assets
+add_library(libusb SHARED IMPORTED)
+set_target_properties(libusb PROPERTIES IMPORTED_LOCATION ${CMAKE_SOURCE_DIR}/../assets/lib/libusb-1.0.so)
 
-target_link_libraries(erixadb ${log-lib})
+add_library(erixadb SHARED native-adb.cpp)
+target_link_libraries(erixadb libusb ${log-lib})
