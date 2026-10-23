@@ -6,16 +6,15 @@ import android.hardware.usb.*
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import com.erix.ptp.ptp.PtpUsbTransport
 import com.erix.ptp.util.DebugLogger
-import com.flyfishxu.kadb.Kadb
-import com.flyfishxu.kadb.usb.KadbUsb
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 object AdbDeviceWatcher {
     private const val ACTION_USB_PERM = "com.erix.ptp.USB_PERMISSION"
-    @Volatile var kadbInstance: Kadb? = null; private set
+    @Volatile var transport: PtpUsbTransport? = null; private set
     private var usbManager: UsbManager? = null
     private var appContext: Context? = null
     private var receiver: BroadcastReceiver? = null
@@ -41,8 +40,8 @@ object AdbDeviceWatcher {
                         }
                     }
                     UsbManager.ACTION_USB_DEVICE_DETACHED -> {
-                        kadbInstance?.close()
-                        kadbInstance = null
+                        transport?.close()
+                        transport = null
                         DebugLogger.log("USB Dicabut")
                         DebugLogger.setStatus("Menunggu device...")
                     }
@@ -90,18 +89,21 @@ object AdbDeviceWatcher {
     private fun connect(device: UsbDevice) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                DebugLogger.log("Membuat KadbUsb...")
-                val kadb = KadbUsb.create(appContext!!, device)
-                
-                kadbInstance = kadb
-                DebugLogger.log("✓ KADB TERHUBUNG (USB)!")
-                DebugLogger.setStatus("✓ Kadb Terhubung")
-                
-                val resp = kadb.shell("echo ERIX_OK").output
-                DebugLogger.log("Shell test: $resp")
-
+                if (!PtpUsbTransport.hasPtp(device)) {
+                    DebugLogger.log("Device tanpa interface PTP, dilewati")
+                    return@launch
+                }
+                DebugLogger.log("Membuka koneksi PTP...")
+                val conn = usbManager?.openDevice(device) ?: throw IllegalStateException("openDevice gagal")
+                val t = PtpUsbTransport(device, conn)
+                transport = t
+                val code = t.openSession()
+                DebugLogger.log("OpenSession OK (0x${code.toString(16)})")
+                val sid = t.getStorageId()
+                DebugLogger.log("✓ PTP TERHUBUNG, storage 0x${sid.toString(16)}")
+                DebugLogger.setStatus("✓ PTP Terhubung")
             } catch (t: Throwable) {
-                DebugLogger.log("❌ Kadb Gagal: ${t.message}")
+                DebugLogger.log("❌ PTP Gagal: ${t.message}")
                 DebugLogger.setStatus("❌ ${t.message}")
             }
         }

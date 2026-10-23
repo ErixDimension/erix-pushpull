@@ -42,8 +42,4 @@ dependencies {
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0'
     implementation 'com.squareup.okio:okio:3.9.0'
 
-    // KADB 2.1.0 (Exclude spake2)
-    implementation("com.flyfishxu:kadb:2.1.0") {
-        exclude group: 'com.github.Flyfish233'
-    }
 }
