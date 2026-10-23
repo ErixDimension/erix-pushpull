@@ -1,5 +1,4 @@
 package com.erix.ptp.ptp
-
 import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbEndpoint
 import com.erix.ptp.util.DebugLogger
@@ -8,138 +7,52 @@ import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-class AdbNativeTransport(
-    private val connection: UsbDeviceConnection,
-    private val inEp: UsbEndpoint,
-    private val outEp: UsbEndpoint,
-    private val crypto: AdbCrypto
-) : Closeable {
-
+class AdbNativeTransport(connection: UsbDeviceConnection, val inEp: UsbEndpoint, val outEp: UsbEndpoint, private val crypto: AdbCrypto) : Closeable {
     companion object {
-        const val A_CNXN = 0x4e584e43.toInt()
-        const val A_AUTH = 0x48545541.toInt()
-        const val A_VERSION_MIN = 0x01000000
-        const val A_MAX_PAYLOAD = 4096
-        const val ADB_AUTH_TOKEN = 1
-        const val ADB_AUTH_SIGNATURE = 2
-        const val ADB_AUTH_RSAPUBLICKEY = 3
+        const val A_CNXN = 0x4e584e43.toInt(); const val A_AUTH = 0x48545541.toInt()
+        const val A_VERSION_MIN = 0x01000000; const val A_MAX_PAYLOAD = 4096
+        const val ADB_AUTH_TOKEN = 1; const val ADB_AUTH_SIGNATURE = 2; const val ADB_AUTH_RSAPUBLICKEY = 3
     }
-
-    private data class Msg(val cmd: Int, val a0: Int, val a1: Int, val payload: ByteArray)
-
     init {
-        try {
-            connection.controlTransfer(0x02, 0x01, 0x00, inEp.address, null, 0, 500)
-            connection.controlTransfer(0x02, 0x01, 0x00, outEp.address, null, 0, 500)
-            DebugLogger.log("[ADB] Clear Halt OK")
-        } catch (e: Exception) {
-            DebugLogger.log("[ADB] Clear Halt gagal: ${e.message}")
-        }
+        val fdField = UsbDeviceConnection::class.java.getDeclaredMethod("getFileDescriptor")
+        fdField.isAccessible = true
+        val fd = fdField.invoke(connection) as Int
+        if (!AdbNative.initLibusb(fd)) throw IOException("Gagal inisialisasi libusb")
     }
-
-    private fun hexDump(data: ByteArray, maxLen: Int = 32): String {
-        val sb = StringBuilder()
-        val limit = minOf(data.size, maxLen)
-        for (i in 0 until limit) {
-            sb.append(String.format("%02X ", data[i]))
-        }
-        if (data.size > maxLen) sb.append("...")
-        return sb.toString()
-    }
-
-    private fun kotlinWrite(data: ByteArray) {
-        DebugLogger.log("[TX] ${data.size}B: ${hexDump(data)}")
-        var offset = 0
-        while (offset < data.size) {
-            val chunk = minOf(16384, data.size - offset)
-            val slice = data.copyOfRange(offset, offset + chunk)
-            val res = connection.bulkTransfer(outEp, slice, chunk, 5000)
-            if (res < 0) throw IOException("TX fail: $res")
-            offset += res
-        }
-    }
-
-    private fun kotlinRead(expectedLen: Int, timeout: Int): ByteArray {
-        val buffer = ByteArray(expectedLen)
-        var read = 0
-        while (read < expectedLen) {
-            val res = connection.bulkTransfer(inEp, buffer, read, expectedLen - read, timeout)
-            if (res <= 0) {
-                if (res == 0) throw IOException("RX timeout")
-                throw IOException("RX fail (stall): $res")
-            }
-            read += res
-        }
-        DebugLogger.log("[RX] ${buffer.size}B: ${hexDump(buffer)}")
-        return buffer
-    }
-
-    private fun checksum(p: ByteArray): Int { 
-        var s = 0
-        for (b in p) s += (b.toInt() and 0xFF)
-        return s 
-    }
-
     private fun sendMsg(cmd: Int, a0: Int, a1: Int, payload: ByteArray) {
         val bb = ByteBuffer.allocate(24 + payload.size).order(ByteOrder.LITTLE_ENDIAN)
         bb.putInt(cmd); bb.putInt(a0); bb.putInt(a1); bb.putInt(payload.size)
-        bb.putInt(checksum(payload)); bb.putInt(cmd xor -1); bb.put(payload)
-        kotlinWrite(bb.array())
+        var s = 0; for (b in payload) s += (b.toInt() and 0xFF)
+        bb.putInt(s); bb.putInt(cmd xor -1); bb.put(payload)
+        AdbNative.bulkTransfer(outEp.address, bb.array(), 0, 24 + payload.size, 5000)
     }
-
-    private fun recvMsg(): Msg {
-        val header = kotlinRead(24, 5000)
-        val bb = ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN)
-        val cmd = bb.int
-        val a0 = bb.int
-        val a1 = bb.int
-        val len = bb.int
-        bb.int // checksum
-        bb.int // magic
-        
-        val payload = if (len > 0) kotlinRead(len, 5000) else ByteArray(0)
-        return Msg(cmd, a0, a1, payload)
+    private fun recvMsg(): ByteArray {
+        val buf = ByteArray(65536)
+        val n = AdbNative.bulkTransfer(inEp.address, buf, 0, buf.size, 5000)
+        if (n < 0) throw IOException("RX gagal")
+        return buf.copyOf(n)
     }
-
     fun connect() {
-        DebugLogger.log("[ADB] Mengirim CNXN (AOSP Features)...")
-        // Banner AOSP lengkap (wajib untuk TWRP modern)
-        val featureList = "host::features=cmd,shell_v2,stat_v2,fixed_push_mkdir,apex,abb,abb_exec,remount_shell,track_app,sendrecv_v2,sendrecv_v2_brotli,sendrecv_v2_lz4,sendrecv_v2_zstd,openscreen_mdns\u0000"
-        val banner = featureList.toByteArray()
-        sendMsg(A_CNXN, A_VERSION_MIN, A_MAX_PAYLOAD, banner)
-        
-        DebugLogger.log("[ADB] Menunggu TWRP bangun (500ms)...")
-        Thread.sleep(500) // Beri waktu TWRP memproses banner
-
-        var loop = true
-        while (loop) {
-            val msg = recvMsg()
-            when (msg.cmd) {
-                A_CNXN -> {
-                    DebugLogger.log("✅ ADB TERHUBUNG! (CNXN OK)")
-                    DebugLogger.setStatus("✓ ADB Terhubung!")
-                    loop = false
-                }
-                A_AUTH -> {
-                    if (msg.a0 == ADB_AUTH_TOKEN) {
-                        DebugLogger.log("🔑 AUTH Token. Menandatangani...")
-                        val sig = crypto.sign(msg.payload)
-                        if (sig != null) {
-                            sendMsg(A_AUTH, ADB_AUTH_SIGNATURE, 0, sig)
-                        } else {
-                            DebugLogger.log("📱 SILAKAN KLIK IZINKAN DI LAYAR TWRP!")
-                            DebugLogger.setStatus("📱 Izinkan ADB di TWRP!")
-                            sendMsg(A_AUTH, ADB_AUTH_RSAPUBLICKEY, 0, crypto.publicKeyBytes())
-                            sendMsg(A_CNXN, A_VERSION_MIN, A_MAX_PAYLOAD, banner)
-                        }
+        DebugLogger.log("[LIBUSB] Kirim CNXN...")
+        sendMsg(A_CNXN, A_VERSION_MIN, A_MAX_PAYLOAD, "host::erix\u0000".toByteArray())
+        while (true) {
+            val data = recvMsg()
+            val bb = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
+            val cmd = bb.int; val a0 = bb.int; bb.int; val len = bb.int
+            if (cmd == A_CNXN) { DebugLogger.log("✅ ADB TERHUBUNG (libusb)!"); return }
+            if (cmd == A_AUTH) {
+                if (a0 == ADB_AUTH_TOKEN) {
+                    val token = ByteArray(len); bb.get(token)
+                    val sig = crypto.sign(token)
+                    if (sig != null) sendMsg(A_AUTH, ADB_AUTH_SIGNATURE, 0, sig)
+                    else {
+                        DebugLogger.log("📱 IZINKAN DI TWRP!")
+                        sendMsg(A_AUTH, ADB_AUTH_RSAPUBLICKEY, 0, crypto.publicKeyBytes())
+                        sendMsg(A_CNXN, A_VERSION_MIN, A_MAX_PAYLOAD, "host::erix\u0000".toByteArray())
                     }
                 }
-                else -> DebugLogger.log("⚠ Cmd: 0x${Integer.toHexString(msg.cmd)}")
             }
         }
     }
-
-    override fun close() {
-        try { connection.close() } catch (_: Exception) {}
-    }
+    override fun close() {}
 }
