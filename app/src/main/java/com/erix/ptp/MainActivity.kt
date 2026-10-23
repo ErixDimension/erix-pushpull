@@ -27,6 +27,14 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch { DebugLogger.logs.collect { b.tvLog.text = it } }
         lifecycleScope.launch { DebugLogger.status.collect { b.tvStatus.text = it } }
 
+        b.btnBrowser.setOnClickListener {
+            if (PtpWatcher.transport == null) {
+                Toast.makeText(this, "Colok kabel ke TWRP dulu", Toast.LENGTH_SHORT).show()
+            } else {
+                startActivity(android.content.Intent(this, com.erix.ptp.ui.BrowserActivity::class.java))
+            }
+        }
+
         b.btnTest.setOnClickListener {
             val t = PtpWatcher.transport
             if (t == null) { Toast.makeText(this, "Belum konek", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
