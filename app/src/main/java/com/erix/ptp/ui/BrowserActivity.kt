@@ -66,11 +66,15 @@ class BrowserActivity : AppCompatActivity() {
         val adapter = object : FragmentStateAdapter(this) {
             override fun getItemCount() = 2
             override fun createFragment(position: Int): Fragment {
-                return if (position == 0) {
-                    BrowserFragment(isRemote = false) { side, items -> onSelection("LOCAL", items) }.also { localFragment = it }
+                val frag = BrowserFragment()
+                if (position == 0) {
+                    frag.setParams(false) { _, items -> onSelection("LOCAL", items) }
+                    localFragment = frag
                 } else {
-                    BrowserFragment(isRemote = true) { side, items -> onSelection("REMOTE", items) }.also { remoteFragment = it }
+                    frag.setParams(true) { _, items -> onSelection("REMOTE", items) }
+                    remoteFragment = frag
                 }
+                return frag
             }
         }
         b.pager.adapter = adapter
