@@ -24,41 +24,55 @@ class AdbNativeTransport(
         const val ADB_AUTH_RSAPUBLICKEY = 3
     }
 
-    private val fd: Int by lazy { getUsbFd(connection) }
-
     init {
-        // PENTING: Bersihkan kedua endpoint dari sisa stall koneksi sebelumnya
+        // Clear halt kedua endpoint
         try {
             connection.controlTransfer(0x02, 0x01, 0x00, inEp.address, null, 0, 500)
             connection.controlTransfer(0x02, 0x01, 0x00, outEp.address, null, 0, 500)
-            DebugLogger.log("[ADB] Clear Halt (IN & OUT) berhasil.")
+            DebugLogger.log("[ADB] Clear Halt OK")
         } catch (e: Exception) {
             DebugLogger.log("[ADB] Clear Halt gagal: ${e.message}")
         }
     }
 
-    private fun getUsbFd(conn: UsbDeviceConnection): Int {
-        try {
-            val method = UsbDeviceConnection::class.java.getDeclaredMethod("getFileDescriptor")
-            method.isAccessible = true
-            return method.invoke(conn) as Int
-        } catch (e: Exception) {
-            throw RuntimeException("Gagal mendapat FD USB: ${e.message}")
+    private fun hexDump(data: ByteArray, maxLen: Int = 32): String {
+        val sb = StringBuilder()
+        val limit = minOf(data.size, maxLen)
+        for (i in 0 until limit) {
+            sb.append(String.format("%02X ", data[i]))
         }
+        if (data.size > maxLen) sb.append("...")
+        return sb.toString()
     }
 
     private fun kotlinWrite(data: ByteArray) {
-        val res = connection.bulkTransfer(outEp, data, data.size, 5000)
-        if (res < 0) throw IOException("Kotlin Write gagal: $res")
+        DebugLogger.log("[TX] ${data.size}B: ${hexDump(data)}")
+        var offset = 0
+        while (offset < data.size) {
+            val chunk = minOf(16384, data.size - offset)
+            val slice = data.copyOfRange(offset, offset + chunk)
+            val res = connection.bulkTransfer(outEp, slice, chunk, 5000)
+            if (res < 0) throw IOException("TX fail: $res")
+            offset += res
+        }
     }
 
-    private fun kotlinRead(buffer: ByteArray, timeout: Int): Int {
-        // Paksa maksimal 16KB sesuai batasan driver USB Android
-        val safeSize = minOf(buffer.size, 16384)
-        return connection.bulkTransfer(inEp, buffer, safeSize, timeout)
+    private fun kotlinRead(expectedLen: Int, timeout: Int): ByteArray {
+        val buffer = ByteArray(expectedLen)
+        var read = 0
+        while (read < expectedLen) {
+            val res = connection.bulkTransfer(inEp, buffer, read, expectedLen - read, timeout)
+            if (res <= 0) {
+                if (res == 0) throw IOException("RX timeout")
+                throw IOException("RX fail (stall): $res")
+            }
+            read += res
+        }
+        DebugLogger.log("[RX] ${buffer.size}B: ${hexDump(buffer)}")
+        return buffer
     }
 
-    private data class Msg(val cmd: Int, val a0: Int, val a1: Int, val payload: ByteArray)
+    private fun checksum(p: ByteArray): Int { var s = 0; for (b in p) s += (b.toInt() and 0xFF); return s }
 
     private fun sendMsg(cmd: Int, a0: Int, a1: Int, payload: ByteArray) {
         val bb = ByteBuffer.allocate(24 + payload.size).order(ByteOrder.LITTLE_ENDIAN)
@@ -67,84 +81,47 @@ class AdbNativeTransport(
         kotlinWrite(bb.array())
     }
 
-    private fun recvMsg(): Msg {
-        val headerBuf = ByteArray(24)
-        var read = 0
-        while (read < 24) {
-            val n = kotlinRead(headerBuf, 5000)
-            if (n < 0) throw IOException("Kotlin Read gagal (err: $n)")
-            read += n
-        }
-        val bb = ByteBuffer.wrap(headerBuf).order(ByteOrder.LITTLE_ENDIAN)
+    private fun recvMsg(): data class Msg(val cmd: Int, val a0: Int, val a1: Int, val payload: ByteArray) {
+        val header = kotlinRead(24, 5000)
+        val bb = ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN)
         val cmd = bb.int; val a0 = bb.int; val a1 = bb.int; val len = bb.int; bb.int; bb.int
         
-        val payload = ByteArray(if (len > 0) len else 0)
-        if (len > 0) {
-            var pRead = 0
-            while (pRead < len) {
-                val n = kotlinRead(payload.copyOfRange(pRead, payload.size), 5000)
-                if (pRead < len && n < 0) throw IOException("Kotlin Payload gagal")
-                pRead += n
-            }
-        }
+        val payload = if (len > 0) kotlinRead(len, 5000) else ByteArray(0)
         return Msg(cmd, a0, a1, payload)
     }
 
-    private fun checksum(p: ByteArray): Int { var s = 0; for (b in p) s += (b.toInt() and 0xFF); return s }
-
     fun connect() {
-        DebugLogger.log("[ADB] Mengirim CNXN (Handshake via Kotlin)...")
-        val banner = "host::erix-native\u0000".toByteArray()
+        DebugLogger.log("[ADB] Mengirim CNXN (AOSP Format)...")
+        val banner = "host::erix\u0000".toByteArray()
         sendMsg(A_CNXN, A_VERSION_MIN, A_MAX_PAYLOAD, banner)
 
-        while (true) {
+        var loop = true
+        while (loop) {
             val msg = recvMsg()
             when (msg.cmd) {
                 A_CNXN -> {
-                    DebugLogger.log("✅ ADB TERHUBUNG! (CNXN diterima)")
+                    DebugLogger.log("✅ ADB TERHUBUNG! (CNXN OK)")
                     DebugLogger.setStatus("✓ ADB Terhubung!")
-                    return
+                    loop = false
                 }
                 A_AUTH -> {
                     if (msg.a0 == ADB_AUTH_TOKEN) {
-                        DebugLogger.log("🔑 AUTH Token. Menandatangani...")
+                        DebugLogger.log("🔑 Menerima AUTH Token. Kirim Signature...")
                         val sig = crypto.sign(msg.payload)
                         if (sig != null) {
                             sendMsg(A_AUTH, ADB_AUTH_SIGNATURE, 0, sig)
                         } else {
-                            DebugLogger.log("📱 SILAKAN KLIK IZINKAN DI LAYAR TWRP!")
-                            DebugLogger.setStatus("📱 Izinkan ADB di TWRP!")
+                            DebugLogger.log("📱 KIRIM PUBLIC KEY (Cek popup TWRP!)")
+                            DebugLogger.setStatus("📱 Izinkan di TWRP!")
                             sendMsg(A_AUTH, ADB_AUTH_RSAPUBLICKEY, 0, crypto.publicKeyBytes())
                             sendMsg(A_CNXN, A_VERSION_MIN, A_MAX_PAYLOAD, banner)
                         }
                     }
                 }
-                else -> DebugLogger.log("⚠ Pesan: 0x${Integer.toHexString(msg.cmd)}")
+                else -> DebugLogger.log("⚠ Cmd: 0x${Integer.toHexString(msg.cmd)}")
             }
         }
     }
-
-    // Fungsi ini yang nanti akan dipanggil untuk transfer >4GB
-
-    fun lockAdbKey(): Boolean {
-        try {
-            val pubKey = String(crypto.publicKeyBytes(), Charsets.UTF_8)
-            // Perintah shell untuk menulis kunci ke file adb_keys
-            val cmd = "mkdir -p /data/misc/adb && echo '$pubKey' >> /data/misc/adb/adb_keys && chmod 640 /data/misc/adb/adb_keys"
-            // Kita gunakan shell service ADB untuk mengeksekusi perintah ini
-            val shellId = openService("shell:$cmd")
-            val output = readAll(shellId)
-            closeStream(shellId)
-            val result = String(output, Charsets.UTF_8)
-            DebugLogger.log("Lock result: $result")
-            return result.contains("error", ignoreCase = true) == false
-        } catch (e: Exception) {
-            DebugLogger.log("Lock gagal: ${e.message}")
-            return false
-        }
-    }
-
-    fun getNativeFd(): Int = fd
 
     override fun close() {
         try { connection.close() } catch (_: Exception) {}

@@ -124,10 +124,7 @@ object PtpWatcher {
                 
                 adbNative = nativeT
                 DebugLogger.log("✓ ADB Native SIAP DIGUNAKAN!")
-                // Lock kunci agar sesi stabil
-                if (nativeT.lockAdbKey()) {
-                    DebugLogger.log("🔒 Sesi ADB berhasil dikunci (permanen)")
-                } else {
+                // Lock kunci agar sesi stabil else {
                     DebugLogger.log("⚠ Gagal lock kunci, sesi mungkin sementara")
                 }
                 DebugLogger.setStatus("✓ ADB Terhubung (Native)")
