@@ -21,8 +21,19 @@ class AdbUsbBridge(
         // AOSP PURE: Hanya claim. TIDAK setInterface, TIDAK clearHalt di init.
         val claimed = connection.claimInterface(intf, true)
         DebugLogger.log("[USB] Claim: $claimed")
+        DebugLogger.log(
+            "[USB] Interface id=${intf.id}, class=${intf.interfaceClass}, " +
+            "subclass=${intf.interfaceSubclass}, protocol=${intf.interfaceProtocol}"
+        )
+        DebugLogger.log(
+            "[USB] IN addr=0x${Integer.toHexString(inEp.address)}, " +
+            "type=${inEp.type}, maxPacket=${inEp.maxPacketSize}"
+        )
+        DebugLogger.log(
+            "[USB] OUT addr=0x${Integer.toHexString(outEp.address)}, " +
+            "type=${outEp.type}, maxPacket=${outEp.maxPacketSize}"
+        )
         if (!claimed) throw IOException("Claim gagal")
-        // Beri waktu settle minimal
         Thread.sleep(100)
     }
 
@@ -37,7 +48,15 @@ class AdbUsbBridge(
         var rem = len
         while (rem > 0) {
             val res = connection.bulkTransfer(inEp, buffer, off, rem, 10000)
-            if (res < 0) throw IOException("Read fail: $res")
+            if (res < 0) {
+                DebugLogger.log(
+                    "[USB] bulkTransfer IN gagal: res=$res, addr=0x" +
+                    Integer.toHexString(inEp.address) +
+                    ", type=${inEp.type}, maxPacket=${inEp.maxPacketSize}, " +
+                    "offset=$off, remaining=$rem"
+                )
+                throw IOException("Read fail: $res")
+            }
             if (res == 0) throw IOException("Read timeout")
             off += res; rem -= res
         }

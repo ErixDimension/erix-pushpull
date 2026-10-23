@@ -176,6 +176,15 @@ object AdbDeviceWatcher {
                 val outEndpoint = output
                     ?: throw IllegalStateException("Endpoint OUT tidak ditemukan")
 
+                DebugLogger.log(
+                    "[USB] Target VID=${device.vendorId}, PID=${device.productId}, " +
+                    "device=${device.deviceName}"
+                )
+                DebugLogger.log(
+                    "[USB] Endpoint terpilih: IN=0x${Integer.toHexString(inEndpoint.address)}, " +
+                    "OUT=0x${Integer.toHexString(outEndpoint.address)}"
+                )
+
                 bridge = AdbUsbBridge(
                     conn, selectedIntf, inEndpoint, outEndpoint, AdbCrypto()
                 )
