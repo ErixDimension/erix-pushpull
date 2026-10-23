@@ -6,6 +6,26 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 class LocalFileManager {
+
+    data class StorageStats(
+        val totalBytes: Long,
+        val freeBytes: Long,
+        val usableBytes: Long
+    )
+
+    fun getStorageStats(): StorageStats {
+        return try {
+            val f = File(rootPath())
+            StorageStats(
+                totalBytes = f.totalSpace,
+                freeBytes = f.freeSpace,
+                usableBytes = f.usableSpace
+            )
+        } catch (_: Exception) {
+            StorageStats(0L, 0L, 0L)
+        }
+    }
+
     suspend fun list(path: String): List<FileEntry.Local> = withContext(Dispatchers.IO) {
         val dir = File(path)
         if (!dir.isDirectory) return@withContext emptyList()
