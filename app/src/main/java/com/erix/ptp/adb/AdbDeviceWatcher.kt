@@ -6,7 +6,7 @@ import android.hardware.usb.*
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import com.erix.ptp.ptp.PtpUsbTransport
+import com.erix.ptp.ptp.AdbUsbTransport
 import com.erix.ptp.util.DebugLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -14,7 +14,9 @@ import kotlinx.coroutines.launch
 
 object AdbDeviceWatcher {
     private const val ACTION_USB_PERM = "com.erix.ptp.USB_PERMISSION"
-    @Volatile var transport: PtpUsbTransport? = null; private set
+
+    @Volatile var transport: AdbUsbTransport? = null; private set
+
     private var usbManager: UsbManager? = null
     private var appContext: Context? = null
     private var receiver: BroadcastReceiver? = null
@@ -47,7 +49,7 @@ object AdbDeviceWatcher {
                     }
                     ACTION_USB_PERM -> {
                         if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
-                            DebugLogger.log("Izin diberikan. Delay 1s...")
+                            DebugLogger.log("Izin USB diberikan. Delay 1s...")
                             Handler(Looper.getMainLooper()).postDelayed({
                                 getDevice(intent)?.let { connect(it) }
                             }, 1000)
@@ -70,8 +72,10 @@ object AdbDeviceWatcher {
     }
 
     private fun getDevice(intent: Intent): UsbDevice? =
-        if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
-        else @Suppress("DEPRECATION") intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
+        if (Build.VERSION.SDK_INT >= 33)
+            intent.getParcelableExtra(UsbManager.EXTRA_DEVICE, UsbDevice::class.java)
+        else @Suppress("DEPRECATION")
+            intent.getParcelableExtra(UsbManager.EXTRA_DEVICE)
 
     private fun requestPermission(device: UsbDevice) {
         val manager = usbManager ?: return
@@ -82,29 +86,33 @@ object AdbDeviceWatcher {
         val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
             PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         else PendingIntent.FLAG_UPDATE_CURRENT
-        val pi = PendingIntent.getBroadcast(appContext, 0, Intent(ACTION_USB_PERM).setPackage(appContext?.packageName), flags)
+        val pi = PendingIntent.getBroadcast(
+            appContext, 0,
+            Intent(ACTION_USB_PERM).setPackage(appContext?.packageName), flags
+        )
         manager.requestPermission(device, pi)
     }
 
     private fun connect(device: UsbDevice) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                if (!PtpUsbTransport.hasPtp(device)) {
-                    DebugLogger.log("Device tanpa interface PTP, dilewati")
+                if (!AdbUsbTransport.hasAdb(device)) {
+                    DebugLogger.log("Device tanpa interface ADB, dilewati")
                     return@launch
                 }
-                DebugLogger.log("Membuka koneksi PTP...")
-                val conn = usbManager?.openDevice(device) ?: throw IllegalStateException("openDevice gagal")
-                val t = PtpUsbTransport(device, conn)
+                DebugLogger.log("Membuka koneksi ADB...")
+                DebugLogger.setStatus("Mencari ADB device...")
+                val ctx = appContext ?: throw IllegalStateException("Context null")
+                val t = AdbUsbTransport(ctx, device)
                 transport = t
-                val code = t.openSession()
-                DebugLogger.log("OpenSession OK (0x${code.toString(16)})")
-                val sid = t.getStorageId()
-                DebugLogger.log("✓ PTP TERHUBUNG, storage 0x${sid.toString(16)}")
-                DebugLogger.setStatus("✓ PTP Terhubung")
+                t.connect()
+                DebugLogger.log("✓ ADB TERHUBUNG (${device.deviceName})")
+                DebugLogger.setStatus("✓ ADB Terhubung")
             } catch (t: Throwable) {
-                DebugLogger.log("❌ PTP Gagal: ${t.message}")
+                DebugLogger.log("❌ ADB Gagal: ${t.message}")
                 DebugLogger.setStatus("❌ ${t.message}")
+                transport?.close()
+                transport = null
             }
         }
     }
