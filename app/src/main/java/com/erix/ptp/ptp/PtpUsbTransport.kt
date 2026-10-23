@@ -76,16 +76,13 @@ class PtpUsbTransport(
 
         private fun fill(): Boolean {
             if (pos < len) return true
-            var attempts = 0
-            while (attempts < 10) {
-                val n = connection.bulkTransfer(epIn, buf, buf.size, BULK_TIMEOUT)
-                if (n < 0) throw IOException("USB error: $n")
-                if (n == 0) { attempts++; Thread.sleep(50); continue }
-                len = n
-                pos = 0
-                return true
-            }
-            return false
+            // Coba baca dengan timeout 5 detik. Jika TWRP diam (deadlock), kita gagalkan.
+            val n = connection.bulkTransfer(epIn, buf, buf.size, 5000)
+            if (n < 0) throw IOException("USB error: $n")
+            if (n == 0) return false  // Timeout
+            len = n
+            pos = 0
+            return true
         }
 
         fun readBytes(count: Int): ByteArray {
