@@ -71,15 +71,43 @@ class MainActivity : AppCompatActivity() {
             val sid = PtpWatcher.storageId
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
+                    val targetName = "erix_push_test.txt"  // File yang kita push sebelumnya
+                    DebugLogger.log("PULL target: $targetName")
+                    DebugLogger.log("(kalau belum push, klik PUSH dulu)")
+
                     val list = t.listRoot(sid)
-                    if (list.isEmpty()) { DebugLogger.log("Tidak ada file"); return@launch }
-                    val f = list.first()
-                    DebugLogger.log("PULL ${f.name} (${f.size}b)...")
+                    DebugLogger.log("Total item di root: ${list.size}")
+                    list.take(10).forEach { e ->
+                        DebugLogger.log("  ${if (e.isDir) "📁" else "📄"} ${e.name} (${e.size}b)")
+                    }
+
+                    val target = list.firstOrNull { it.name == targetName }
+                    if (target == null) {
+                        DebugLogger.log("❌ File '$targetName' tidak ditemukan")
+                        DebugLogger.log("   Klik PUSH dulu untuk upload file test")
+                        return@launch
+                    }
+                    if (target.isDir) {
+                        DebugLogger.log("❌ '$targetName' adalah folder")
+                        return@launch
+                    }
+
+                    DebugLogger.log("PULL ${target.name} (${target.size}b)...")
                     val dir = getExternalFilesDir(null) ?: filesDir
                     dir.mkdirs()
-                    val dst = File(dir, "erix_${f.name}")
-                    t.pull(sid, f.name, dst) { r -> DebugLogger.log("  $r/${f.size}") }
+                    val dst = File(dir, "erix_pull_${target.name}")
+                    t.pull(sid, target.name, dst) { r -> DebugLogger.log("  $r/${target.size}") }
                     DebugLogger.log("✓ PULL OK: ${dst.absolutePath}")
+                    DebugLogger.log("   Isi file: ${dst.readText().trim()}")
+
+                    // Bandingkan dengan asli
+                    val orig = File(dir, "erix_push_test.txt")
+                    if (orig.exists()) {
+                        val original = orig.readText()
+                        val pulled = dst.readText()
+                        if (original == pulled) DebugLogger.log("✓✓✓ ROUND-TRIP IDENTIK! PTP SUKSES PENUH! ✓✓✓")
+                        else DebugLogger.log("⚠ File beda: original=${original.length}b, pulled=${pulled.length}b")
+                    }
                 } catch (e: Exception) {
                     DebugLogger.log("❌ PULL: ${e.message}")
                     try { t.recover(); DebugLogger.log("↻ Session dipulihkan") } catch (_: Exception) {}

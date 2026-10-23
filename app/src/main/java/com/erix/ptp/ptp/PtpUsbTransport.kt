@@ -176,6 +176,9 @@ class PtpUsbTransport(
         if (resp.code != RESP_OK || data.size <= 52) return null
 
         val bb = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
+        bb.position(4)
+        val objFormat = bb.short.toInt() and 0xFFFF
+        val isDir = (objFormat == 0x3001)
         bb.position(8)
         val size = bb.int.toLong() and 0xFFFFFFFFL
 
@@ -189,7 +192,7 @@ class PtpUsbTransport(
             sb.append(code.toChar())
             pos += 2
         }
-        return ObjectEntry(handle, sb.toString(), size, isDir = false)
+        return ObjectEntry(handle, sb.toString(), size, isDir = isDir)
     }
 
     fun push(storageId: Int, localFile: File, remoteName: String, onProgress: (Long) -> Unit = {}) {
@@ -244,6 +247,7 @@ class PtpUsbTransport(
         val entries = listRoot(storageId)
         val entry = entries.firstOrNull { it.name == remoteName }
             ?: throw PtpException("File '$remoteName' tidak ada")
+        if (entry.isDir) throw PtpException("'$remoteName' adalah FOLDER, tidak bisa di-pull")
 
         txn++
         sendCommand(OP_GET_OBJECT, intArrayOf(entry.handle))
@@ -254,7 +258,7 @@ class PtpUsbTransport(
                 var received = 0L; var first = true; var stall = 0
                 val buf = ByteArray(BULK_BUF)
                 while (received < entry.size) {
-                    val n = connection.bulkTransfer(epIn, buf, buf.size, BULK_TIMEOUT)
+                    val n = connection.bulkTransfer(epIn, buf, buf.size, 5000)
                     if (n < 0) { stall++; if (stall > 3) break; continue }
                     stall = 0
                     val offset = if (first) 12 else 0

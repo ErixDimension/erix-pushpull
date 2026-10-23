@@ -6,8 +6,8 @@ android {
         applicationId "com.erix.ptp"
         minSdk 26
         targetSdk 34
-        versionCode 51
-        versionName "1.0.51-PTP-RECOVERY"
+        versionCode 52
+        versionName "1.0.52-PTP-PULL"
     }
     buildTypes {
         debug { signingConfig signingConfigs.debug }
