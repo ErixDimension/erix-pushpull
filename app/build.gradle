@@ -6,8 +6,8 @@ android {
         applicationId "com.erix.ptp"
         minSdk 26
         targetSdk 34
-        versionCode 112
-        versionName "1.0.112-KADB-META"
+        versionCode 113
+        versionName "1.0.113-KADB-FINAL"
     }
     buildTypes {
         debug { signingConfig signingConfigs.debug }
@@ -29,9 +29,9 @@ android {
     buildFeatures { viewBinding true }
 }
 
-// MATIKAN TASK METADATA (biar tidak komplain soal compileSdk)
+// MATIKAN PAKSA TASK METADATA YANG REWEL
 tasks.whenTaskAdded { task ->
-    if (task.name.contains("AarMetadata")) {
+    if (task.name.contains("AarMetadata") || task.name.contains("dataBindingMergeDependencyArtifacts")) {
         task.enabled = false
     }
 }
@@ -42,7 +42,9 @@ dependencies {
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.7.0'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0'
     implementation 'com.squareup.okio:okio:3.9.0'
-    implementation("com.flyfishxu:kadb:2.0.0") {
+
+    // KADB 2.1.5 (Exclude spake2)
+    implementation("com.flyfishxu:kadb:2.1.5") {
         exclude group: 'com.github.Flyfish233'
     }
 }

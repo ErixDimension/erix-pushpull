@@ -91,14 +91,12 @@ object AdbDeviceWatcher {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 DebugLogger.log("Membuat KadbUsb...")
-                // API yang benar untuk USB adalah KadbUsb.create(context, device)
                 val kadb = KadbUsb.create(appContext!!, device)
                 
                 kadbInstance = kadb
                 DebugLogger.log("✓ KADB TERHUBUNG (USB)!")
                 DebugLogger.setStatus("✓ Kadb Terhubung")
                 
-                // Test shell
                 val resp = kadb.shell("echo ERIX_OK").output
                 DebugLogger.log("Shell test: $resp")
 
