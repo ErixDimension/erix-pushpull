@@ -1,29 +1,20 @@
 name: Build ERIX Kotlin APK
 on: [push, workflow_dispatch]
-
 jobs:
   build-android:
     runs-on: ubuntu-22.04
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'zulu'
-
-      - name: Setup Gradle (Tanpa Cache)
-        uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v4
         with:
-          cache-disabled: true # MATIKAN CACHE UNTUK HINDARI EGRESS LIMIT
-
+          cache-disabled: true
       - name: Build with Gradle
         run: gradle assembleDebug
-
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: erix-kotlin-apk
           path: app/build/outputs/apk/debug/app-debug.apk
