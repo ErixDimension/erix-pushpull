@@ -3,12 +3,12 @@ project("erixadb")
 
 find_library(log-lib log)
 
-# Import libusb dari jniLibs (path eksplisit)
-set(LIBUSB_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../../jniLibs/arm64-v8a/libusb-1.0.so)
+# Import libusb dari jniLibs (path yang benar: naik 1 level)
+set(LIBUSB_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../jniLibs/arm64-v8a/libusb-1.0.so)
 message(STATUS "Looking for libusb at: ${LIBUSB_PATH}")
 
 if(NOT EXISTS ${LIBUSB_PATH})
-    message(FATAL_ERROR "libusb-1.0.so tidak ditemukan di ${LIBUSB_PATH}")
+    message(FATAL_ERROR "libusb-1.0.so TIDAK DITEMUKAN di ${LIBUSB_PATH}")
 endif()
 
 add_library(libusb SHARED IMPORTED)

@@ -18,8 +18,8 @@ android {
         applicationId "com.erix.ptp"
         minSdk 26
         targetSdk 34
-        versionCode 93
-        versionName "1.0.93-LIBUSB-TERMUX"
+        versionCode 94
+        versionName "1.0.94-CMAKE-FIX"
         
         ndk {
             abiFilters 'arm64-v8a'
