@@ -66,32 +66,33 @@ class PtpUsbTransport(
         val size: Long, val isDir: Boolean, val propSize: Long? = null
     )
     data class StorageInfo(val totalBytes: Long, val freeBytes: Long, val description: String)
+    private data class Header(val length: Int, val type: Int, val code: Int, val txn: Int)
 
-    // ============ PTP STREAM READER ============
-    /**
-     * Baca byte-by-byte dari USB endpoint, buffer internal,
-     * supaya header 12-byte tiap PTP packet bisa dibaca utuh.
-     */
+    // ============ STREAM READER (untuk pull multi-packet) ============
     private inner class PtpStreamReader {
         private val buf = ByteArray(BULK_BUF)
         private var pos = 0
         private var len = 0
-        private var stall = 0
+
+        private fun fill(): Boolean {
+            if (pos < len) return true
+            var attempts = 0
+            while (attempts < 10) {
+                val n = connection.bulkTransfer(epIn, buf, buf.size, BULK_TIMEOUT)
+                if (n < 0) throw IOException("USB error: $n")
+                if (n == 0) { attempts++; Thread.sleep(50); continue }
+                len = n
+                pos = 0
+                return true
+            }
+            return false
+        }
 
         fun readBytes(count: Int): ByteArray {
             val out = ByteArray(count)
             var written = 0
             while (written < count) {
-                if (pos >= len) {
-                    len = connection.bulkTransfer(epIn, buf, buf.size, BULK_TIMEOUT)
-                    if (len <= 0) {
-                        stall++
-                        if (stall > 3) throw IOException("Read stall: $len")
-                        continue
-                    }
-                    stall = 0
-                    pos = 0
-                }
+                if (!fill()) throw IOException("Read timeout")
                 val toCopy = minOf(count - written, len - pos)
                 System.arraycopy(buf, pos, out, written, toCopy)
                 pos += toCopy
@@ -103,17 +104,16 @@ class PtpUsbTransport(
         fun readHeader(): Header {
             val h = readBytes(12)
             val bb = ByteBuffer.wrap(h).order(ByteOrder.LITTLE_ENDIAN)
-            val length = bb.int
-            val type = bb.short.toInt() and 0xFFFF
-            val code = bb.short.toInt() and 0xFFFF
-            val txn = bb.int
-            return Header(length, type, code, txn)
+            return Header(
+                length = bb.int,
+                type = bb.short.toInt() and 0xFFFF,
+                code = bb.short.toInt() and 0xFFFF,
+                txn = bb.int
+            )
         }
     }
 
-    private data class Header(val length: Int, val type: Int, val code: Int, val txn: Int)
-
-    // ============ LOW-LEVEL HELPERS ============
+    // ============ LOW-LEVEL ============
     private fun sendCommand(opcode: Int, params: IntArray = IntArray(0)) {
         val len = 12 + params.size * 4
         val bb = ByteBuffer.allocate(len).order(ByteOrder.LITTLE_ENDIAN)
@@ -129,6 +129,15 @@ class PtpUsbTransport(
         bulkWrite(h.array() + data)
     }
 
+    // ★ v68 SIMPLE — works untuk response kecil (GetStorageIds/Info/Handles/ObjectInfo)
+    private fun readFullData(): ByteArray {
+        val buf = ByteArray(65536)
+        val n = connection.bulkTransfer(epIn, buf, buf.size, BULK_TIMEOUT)
+        if (n < 12) throw PtpException("Data pendek ($n)")
+        return buf.copyOfRange(12, n)
+    }
+
+    // ★ v68 SIMPLE — works untuk response kecil
     private fun readResponse(): Response {
         val buf = ByteArray(512)
         val n = connection.bulkTransfer(epIn, buf, buf.size, BULK_TIMEOUT)
@@ -140,34 +149,6 @@ class PtpUsbTransport(
         val paramCount = (n - 12) / 4
         val params = IntArray(paramCount) { bb.int }
         return Response(code, params)
-    }
-
-    private fun readFullData(): ByteArray {
-        // Baca header first
-        val hdr = ByteArray(12)
-        var hdrRead = 0
-        while (hdrRead < 12) {
-            val n = connection.bulkTransfer(epIn, hdr, hdrRead, 12 - hdrRead, BULK_TIMEOUT)
-            if (n <= 0) throw PtpException("Header data fail")
-            hdrRead += n
-        }
-        val bb = ByteBuffer.wrap(hdr).order(ByteOrder.LITTLE_ENDIAN)
-        val totalLen = bb.int
-        bb.short // type
-        bb.short // code
-        bb.int // txn
-        val payloadLen = totalLen - 12
-        if (payloadLen <= 0) return ByteArray(0)
-        if (payloadLen > 10_000_000) throw PtpException("Payload terlalu besar: $payloadLen")
-
-        val payload = ByteArray(payloadLen)
-        var read = 0
-        while (read < payloadLen) {
-            val n = connection.bulkTransfer(epIn, payload, read, payloadLen - read, BULK_TIMEOUT)
-            if (n <= 0) throw PtpException("Payload read fail at $read/$payloadLen")
-            read += n
-        }
-        return payload
     }
 
     private fun bulkWrite(data: ByteArray) {
@@ -325,9 +306,8 @@ class PtpUsbTransport(
     }
 
     fun objectExists(storageId: Int, parentHandle: Int, name: String): Int? {
-        return try {
-            listDir(storageId, parentHandle).firstOrNull { it.name == name }?.handle
-        } catch (_: Exception) { null }
+        return try { listDir(storageId, parentHandle).firstOrNull { it.name == name }?.handle }
+        catch (_: Exception) { null }
     }
 
     fun deleteObject(handle: Int): Boolean {
@@ -337,7 +317,7 @@ class PtpUsbTransport(
         return resp.code == RESP_OK
     }
 
-    // ============ PUSH ============
+    // ============ PUSH (v68 SIMPLE — works) ============
     fun pushToFolder(
         storageId: Int, localFile: File, remoteName: String, parentHandle: Int,
         onProgress: (Long, Long) -> Unit = {_,_->},
@@ -352,7 +332,6 @@ class PtpUsbTransport(
         if (resp1.code != RESP_OK) throw PtpException("SendObjectInfo: 0x${resp1.code.toString(16)}")
 
         txn++
-        // Kirim header 12-byte untuk OP_SEND_OBJECT (bukan lewat sendCommand)
         val header = ByteBuffer.allocate(12).order(ByteOrder.LITTLE_ENDIAN)
         header.putInt(12 + size.toInt()); header.putShort(TYPE_DATA.toShort())
         header.putShort(OP_SEND_OBJECT.toShort()); header.putInt(txn)
@@ -391,48 +370,35 @@ class PtpUsbTransport(
         return bb.array().copyOf(bb.position())
     }
 
-    // ============ PULL (FIXED - MULTI-PACKET) ============
+    // ============ PULL (multi-packet fix) ============
     fun pullByHandle(
         handle: Int, destFile: File,
         onProgress: (Long, Long) -> Unit = {_,_->},
         isCancelled: () -> Boolean = { false }
     ): Boolean {
-        // Ambil info
-        val info = getObjectInfo(handle) ?: throw PtpException("Object $handle tidak ada")
-        val compressedSize = info.size
-        val realSize = info.propSize?.takeIf { it > 0 } ?: compressedSize
-        // Kalau compressed = sentinel 0xFFFFFFFF, wajib pakai propSize
-        val expectedSize = if (compressedSize == 0xFFFFFFFFL && info.propSize != null && info.propSize > 0)
-            info.propSize else compressedSize
+        val info = getObjectInfo(handle) ?: throw PtpException("Object tidak ada")
+        val expectedSize: Long = when {
+            info.size == 0xFFFFFFFFL && info.propSize != null && info.propSize > 0L -> info.propSize
+            info.size == 0xFFFFFFFFL -> throw PtpException("File >4GB tanpa info size. Perlu split.")
+            else -> info.size
+        }
 
         txn++
         sendCommand(OP_GET_OBJECT, intArrayOf(handle))
 
         var success = false
+        val reader = PtpStreamReader()
         try {
             FileOutputStream(destFile).use { out ->
-                val reader = PtpStreamReader()
                 var received = 0L
-                var packetCount = 0
-
                 while (received < expectedSize) {
                     if (isCancelled()) return false
-
                     val hdr = reader.readHeader()
-                    packetCount++
-                    val payloadLen = (hdr.length - 12).toLong()
-
                     if (hdr.type == TYPE_RESP) {
-                        // Unexpected response sebelum data habis
-                        throw PtpException("Response dini (0x${hdr.code.toString(16)}) di packet $packetCount, received=$received/$expectedSize")
+                        throw PtpException("Response dini: 0x${hdr.code.toString(16)}, received=$received/$expectedSize")
                     }
-                    if (hdr.type != TYPE_DATA) {
-                        throw PtpException("Packet type tidak dikenal: ${hdr.type}")
-                    }
-                    if (payloadLen < 0) throw PtpException("Payload negatif")
-
-                    // Baca payload
-                    var remaining = payloadLen
+                    if (hdr.type != TYPE_DATA) throw PtpException("Packet type: ${hdr.type}")
+                    var remaining = (hdr.length - 12).toLong()
                     while (remaining > 0) {
                         if (isCancelled()) return false
                         val toRead = minOf(remaining, 65536L).toInt()
@@ -445,12 +411,11 @@ class PtpUsbTransport(
                 }
                 out.flush()
             }
-            // Baca response final
-            val reader = PtpStreamReader()  // reader baru karena reader lokal tadi
-            // Butuh buffer epIn baru untuk response — baca langsung
-            val resp = readResponse()
-            success = resp.code == RESP_OK
-            if (!success) throw PtpException("GetObject final response: 0x${resp.code.toString(16)}")
+            // Baca RESP final DARI reader (bukan bulkTransfer baru)
+            val respHdr = reader.readHeader()
+            if (respHdr.type != TYPE_RESP) throw PtpException("Expected RESP, got type=${respHdr.type}")
+            success = respHdr.code == RESP_OK
+            if (!success) throw PtpException("Final: 0x${respHdr.code.toString(16)}")
             return true
         } finally {
             if (!success) drain()
