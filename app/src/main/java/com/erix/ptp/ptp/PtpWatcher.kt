@@ -120,7 +120,7 @@ object PtpWatcher {
             }
         }
         if (fi == null || fo == null) throw IllegalStateException("Endpoint tidak lengkap")
-                DebugLogger.log("=== v98 LIBUSB ===")
+                DebugLogger.log("=== v103 USBREQ ===")
         val t = AdbNativeTransport(conn, fi, fo, AdbCrypto())
         t.connect()
         adbNative = t

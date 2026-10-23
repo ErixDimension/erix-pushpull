@@ -20,7 +20,7 @@ class AdbNativeTransport(
         const val A_CNXN = 0x4e584e43.toInt(); const val A_AUTH = 0x48545541.toInt()
         const val A_VERSION_MIN = 0x01000000; const val A_MAX_PAYLOAD = 4096
         const val ADB_AUTH_TOKEN = 1; const val ADB_AUTH_SIGNATURE = 2; const val ADB_AUTH_RSAPUBLICKEY = 3
-        const val BUF_SIZE = 16384 // 16 KB max untuk MediaTek
+        const val BUF_SIZE = 16384
     }
 
     init {
@@ -38,10 +38,12 @@ class AdbNativeTransport(
         bb.putInt(cmd); bb.putInt(a0); bb.putInt(a1); bb.putInt(payload.size)
         var s = 0; for (b in payload) s += (b.toInt() and 0xFF)
         bb.putInt(s); bb.putInt(cmd xor -1); bb.put(payload)
-        DebugLogger.log("[TX] ${24+payload.size}B")
+        DebugLogger.log("[TX] ${24+payload.size}B cmd=0x${Integer.toHexString(cmd)}")
+        
         val r = connection.bulkTransfer(outEp, bb.array(), 24 + payload.size, 5000)
         if (r < 0) throw IOException("TX fail (err: $r)")
-        Thread.sleep(100) // Delay setelah TX
+        
+        Thread.sleep(100) // Jeda agar TWRP siap
     }
 
     private fun recvMsg(): ByteArray {
@@ -52,11 +54,18 @@ class AdbNativeTransport(
         val buffer = ByteBuffer.allocate(BUF_SIZE)
         request.queue(buffer, BUF_SIZE)
 
-        // Tunggu request selesai (timeout 5 detik)
-        val completed = connection.requestWait(5000)
-        if (completed == null) throw IOException("RX timeout (UsbRequest)")
+        // Tunggu request selesai (timeout 10 detik)
+        val completed = connection.requestWait(10000)
+        if (completed == null) {
+            request.cancel()
+            throw IOException("RX timeout (UsbRequest tidak ada balasan)")
+        }
         
-        val data = buffer.array().copyOf(request.readBytes)
+        // Ambil panjang data aktual dari posisi buffer
+        val actualLength = buffer.position()
+        if (actualLength == 0) return ByteArray(0)
+        
+        val data = buffer.array().copyOf(actualLength)
         DebugLogger.log("[RX] ${data.size}B")
         return data
     }
@@ -71,6 +80,7 @@ class AdbNativeTransport(
             if (data.size < 24) continue
             val bb = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
             val cmd = bb.int; val a0 = bb.int; bb.int; val len = bb.int
+            
             when (cmd) {
                 A_CNXN -> { DebugLogger.log("✅ ADB TERHUBUNG (UsbRequest)!"); return }
                 A_AUTH -> {
@@ -79,8 +89,9 @@ class AdbNativeTransport(
                         val token = ByteArray(len.coerceAtMost(data.size - 24))
                         bb.get(token)
                         val sig = crypto.sign(token)
-                        if (sig != null) sendMsg(A_AUTH, ADB_AUTH_SIGNATURE, 0, sig)
-                        else {
+                        if (sig != null) {
+                            sendMsg(A_AUTH, ADB_AUTH_SIGNATURE, 0, sig)
+                        } else {
                             DebugLogger.log("📱 IZINKAN DI TWRP!")
                             sendMsg(A_AUTH, ADB_AUTH_RSAPUBLICKEY, 0, crypto.publicKeyBytes())
                             sendMsg(A_CNXN, A_VERSION_MIN, A_MAX_PAYLOAD, "host::erix\u0000".toByteArray())
