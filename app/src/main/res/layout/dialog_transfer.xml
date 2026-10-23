@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="#1E1E1E"
+    android:padding="20dp">
+
+    <TextView
+        android:id="@+id/tvTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Mentransfer file..."
+        android:textColor="#00E5FF"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/tvFilename"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:text=""
+        android:textColor="#FFFFFF"
+        android:textSize="13sp"
+        android:maxLines="2"
+        android:ellipsize="middle" />
+
+    <ProgressBar
+        android:id="@+id/progressBar"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="8dp"
+        android:layout_marginTop="14dp"
+        android:max="100"
+        android:progress="0"
+        android:progressTint="#00E5FF" />
+
+    <TextView
+        android:id="@+id/tvPercent"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:text="0,0%"
+        android:textColor="#00E5FF"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:gravity="center" />
+
+    <TextView
+        android:id="@+id/tvBytes"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:text="0 Byte / 0 Byte"
+        android:textColor="#FFFFFF"
+        android:textSize="13sp" />
+
+    <TextView
+        android:id="@+id/tvSpeed"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:text="Kecepatan: Menghitung..."
+        android:textColor="#B0BEC5"
+        android:textSize="12sp" />
+
+    <TextView
+        android:id="@+id/tvRemainingTime"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="Sisa waktu: Menghitung..."
+        android:textColor="#B0BEC5"
+        android:textSize="12sp" />
+
+    <TextView
+        android:id="@+id/tvRemainingBytes"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="Sisa data: 0 Byte"
+        android:textColor="#B0BEC5"
+        android:textSize="12sp" />
+
+    <Button
+        android:id="@+id/btnCancel"
+        android:layout_width="match_parent"
+        android:layout_height="44dp"
+        android:layout_marginTop="18dp"
+        android:text="Batal"
+        android:textColor="#FF5252" />
+
+</LinearLayout>
