@@ -4,8 +4,11 @@ import com.erix.ptp.data.FileEntry
 import com.erix.ptp.ptp.AdbUsbTransport
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.File
 
+/**
+ * AdbFileManager — file listing & info (list, getStorageInfo, walkFolder).
+ * Upload/download dipindah ke AdbTransferManager.
+ */
 class AdbFileManager(private val transport: AdbUsbTransport) {
 
     data class StorageInfo(
@@ -14,16 +17,11 @@ class AdbFileManager(private val transport: AdbUsbTransport) {
         val mountPath: String
     )
 
-    private fun shellQuote(s: String): String =
-        "'" + s.replace("'", "'\\''") + "'"
+    private fun shellQuote(s: String): String = "'" + s.replace("'", "'\\''") + "'"
 
     private fun stripAnsi(s: String): String =
         s.replace(Regex("\u001B\\[[;\\d]*m"), "")
 
-    /**
-     * List isi direktori. Entry "." dan ".." difilter keluar.
-     * Pakai `--color=never` + strip ANSI untuk kompatibilitas custom ROM.
-     */
     suspend fun list(path: String): List<FileEntry.Remote> = withContext(Dispatchers.IO) {
         val normalized = path.removeSuffix("/").ifEmpty { "/" }
         val out = try {
@@ -46,13 +44,7 @@ class AdbFileManager(private val transport: AdbUsbTransport) {
         val size = parts[4].toLongOrNull() ?: 0L
         val isDir = first == 'd'
         val fullPath = if (parentPath == "/") "/$name" else "$parentPath/$name"
-        return FileEntry.Remote(
-            name = name,
-            fullPath = fullPath,
-            parentPath = parentPath,
-            size = size,
-            isDir = isDir
-        )
+        return FileEntry.Remote(name, fullPath, parentPath, size, isDir)
     }
 
     suspend fun getStorageInfo(path: String): StorageInfo? = withContext(Dispatchers.IO) {
@@ -66,19 +58,9 @@ class AdbFileManager(private val transport: AdbUsbTransport) {
         val parts = lines[1].trim().split(Regex("\\s+"), limit = 6)
         if (parts.size < 4) return@withContext null
         val totalKb = parts[1].toLongOrNull() ?: return@withContext null
-        val freeKb  = parts[3].toLongOrNull() ?: return@withContext null
-        StorageInfo(
-            totalBytes = totalKb * 1024,
-            freeBytes  = freeKb * 1024,
-            mountPath  = parts.getOrNull(5) ?: path
-        )
+        val freeKb = parts[3].toLongOrNull() ?: return@withContext null
+        StorageInfo(totalKb * 1024, freeKb * 1024, parts.getOrNull(5) ?: path)
     }
-
-    suspend fun upload(local: File, remoteDestPath: String): Result<Unit> =
-        transport.push(local, remoteDestPath)
-
-    suspend fun download(remoteSrcPath: String, local: File): Result<Unit> =
-        transport.pull(remoteSrcPath, local)
 
     suspend fun walkFolder(path: String): List<FileEntry.Remote> = withContext(Dispatchers.IO) {
         val result = mutableListOf<FileEntry.Remote>()
