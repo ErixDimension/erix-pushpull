@@ -21,10 +21,13 @@ class PtpUsbTransport(
         const val OP_GET_OBJECT_HANDLES = 0x1007
         const val OP_GET_OBJECT_INFO = 0x1008
         const val OP_GET_OBJECT = 0x1009
+        const val OP_GET_OBJECT_PROP_VALUE = 0x9803
+        const val OP_GET_OBJECT_PROP_DESC = 0x9802
         const val OP_DELETE_OBJECT = 0x100B
         const val OP_SEND_OBJECT_INFO = 0x100C
         const val OP_SEND_OBJECT = 0x100D
 
+        const val PROP_OBJECT_SIZE = 0xDC04
         const val RESP_OK = 0x2001
         const val RESP_SESSION_ALREADY_OPEN = 0x201e
         const val PARENT_ROOT = 0xFFFFFFFF.toInt()
@@ -66,7 +69,8 @@ class PtpUsbTransport(
         val parentHandle: Int,
         val name: String,
         val size: Long,
-        val isDir: Boolean
+        val isDir: Boolean,
+        val propSize: Long? = null
     )
 
     data class StorageInfo(
@@ -179,6 +183,45 @@ class PtpUsbTransport(
         return sb.toString()
     }
 
+
+    /**
+     * Baca property UINT64 dari object (misal ObjectSize 0xDC04).
+     * Return null kalau property tidak ada / error.
+     */
+    fun getObjectPropValue64(handle: Int, propCode: Int): Long? {
+        return try {
+            txn++
+            sendCommand(OP_GET_OBJECT_PROP_VALUE, intArrayOf(handle, propCode))
+            val data = readFullData()
+            val resp = readResponse()
+            if (resp.code != RESP_OK || data.size < 8) return null
+            ByteBuffer.wrap(data, 0, 8).order(ByteOrder.LITTLE_ENDIAN).long
+        } catch (_: Exception) { null }
+    }
+
+    /**
+     * Cek apakah property didukung (GetObjectPropDesc).
+     * Return null kalau tidak support, atau DataType code kalau support.
+     * DataType: 1=INT8, 2=UINT8, 3=INT16, 4=UINT16, 5=INT32, 6=UINT32,
+     *          7=INT64, 8=UINT64, 9=INT128, 10=UINT128, ...
+     * UINT64 = 8
+     */
+    fun getObjectPropDescDataType(propCode: Int): Int? {
+        return try {
+            txn++
+            sendCommand(OP_GET_OBJECT_PROP_DESC, intArrayOf(propCode))
+            val data = readFullData()
+            val resp = readResponse()
+            if (resp.code != RESP_OK || data.size < 5) return null
+            // Byte 4 = DataType (byte 0-1 PropCode, byte 2-3 DataType di header data packet)
+            // Datatype ada di offset 4-5 setelah PropCode (2) + DataType (2)
+            ByteBuffer.wrap(data, 0, data.size).order(ByteOrder.LITTLE_ENDIAN).let { bb ->
+                bb.position(4)
+                bb.short.toInt() and 0xFFFF
+            }
+        } catch (_: Exception) { null }
+    }
+
     fun drain() {
         try {
             val buf = ByteArray(4096); var stall = 0
@@ -238,7 +281,14 @@ class PtpUsbTransport(
             sb.append(code.toChar())
             pos += 2
         }
-        return PtpObject(handle, parentHandle, sb.toString(), size, isDir)
+        // Coba baca ObjectSize property (UINT64) kalau bukan folder
+        var propSize: Long? = null
+        if (!isDir) {
+            try {
+                propSize = getObjectPropValue64(handle, PROP_OBJECT_SIZE)
+            } catch (_: Exception) {}
+        }
+        return PtpObject(handle, parentHandle, sb.toString(), size, isDir, propSize)
     }
 
     fun objectExists(storageId: Int, parentHandle: Int, name: String): Int? {

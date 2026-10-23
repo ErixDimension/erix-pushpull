@@ -55,15 +55,57 @@ class MainActivity : AppCompatActivity() {
             val sid = PtpWatcher.storageId
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
-                    DebugLogger.log("=== LIST ROOT ===")
+                    DebugLogger.log("═══════════════════════════════")
+                    DebugLogger.log("  MTP PROPERTY DIAGNOSTIC")
+                    DebugLogger.log("═══════════════════════════════")
+
+                    // 1. Cek ObjectSize property supported
+                    DebugLogger.log("")
+                    DebugLogger.log("→ Test GetObjectPropDesc(0xDC04)...")
+                    val dataType = t.getObjectPropDescDataType(0xDC04)
+                    DebugLogger.log("  Hasil: ${if (dataType == null) "TIDAK SUPPORT" else "DataType=0x${dataType.toString(16)}"}")
+
+                    // 2. List root & tampilkan size compressed vs propSize
+                    DebugLogger.log("")
+                    DebugLogger.log("→ List root + baca propSize setiap file...")
                     val entries = t.listRoot(sid)
-                    DebugLogger.log("Total: ${entries.size} item")
-                    entries.take(20).forEach {
-                        DebugLogger.log("  ${if (it.isDir) "[D]" else "[F]"} ${it.name} (${it.size}b)")
+                    DebugLogger.log("  Total: ${entries.size} item")
+                    DebugLogger.log("")
+                    DebugLogger.log("  Format: name | compressedSize | propSize")
+                    DebugLogger.log("  ─────────────────────────────────────")
+
+                    var mismatchCount = 0
+                    var sentinelCount = 0
+                    entries.take(50).forEach {
+                        if (!it.isDir) {
+                            val sentinel = if (it.size == 0xFFFFFFFFL) " ⚠SENTINEL" else ""
+                            val delta = if (it.propSize != null && it.propSize != it.size) " ≠" else ""
+                            if (it.size == 0xFFFFFFFFL) sentinelCount++
+                            if (it.propSize != null && it.propSize != it.size) mismatchCount++
+                            DebugLogger.log("  ${it.name}")
+                            DebugLogger.log("    compressed=${it.size}${sentinel}  prop=${it.propSize ?: "null"}${delta}")
+                        }
                     }
-                    DebugLogger.log("✓ List OK")
+
+                    DebugLogger.log("")
+                    DebugLogger.log("═══════════════════════════════")
+                    DebugLogger.log("  KESIMPULAN:")
+                    DebugLogger.log("═══════════════════════════════")
+                    DebugLogger.log("  ObjectSize property: ${if (dataType != null) "✅ SUPPORT (0xDC04)" else "❌ TIDAK SUPPORT"}")
+                    DebugLogger.log("  File sentinel 0xFFFFFFFF: $sentinelCount")
+                    DebugLogger.log("  File mismatch (compressed ≠ prop): $mismatchCount")
+                    DebugLogger.log("")
+                    if (dataType != null) {
+                        DebugLogger.log("  → MTP workaround SUPPORTED")
+                        DebugLogger.log("  → File >4GB BISA didownload tanpa split")
+                        DebugLogger.log("  → Lanjut v69 implement full streaming")
+                    } else {
+                        DebugLogger.log("  → MTP workaround TIDAK SUPPORT")
+                        DebugLogger.log("  → File >4GB harus pakai split guide")
+                    }
                 } catch (e: Exception) {
-                    DebugLogger.log("❌ List: ${e.message}")
+                    DebugLogger.log("❌ Diagnostic error: ${e.message}")
+                    e.printStackTrace()
                 }
             }
         }
