@@ -1,13 +1,13 @@
 plugins { id 'com.android.application'; id 'org.jetbrains.kotlin.android' }
 android {
     namespace 'com.erix.ptp'
-    compileSdk 36
+    compileSdk 34
     defaultConfig {
         applicationId "com.erix.ptp"
         minSdk 26
         targetSdk 34
-        versionCode 114
-        versionName "1.0.114-KADB-JDK21"
+        versionCode 115
+        versionName "1.0.115-KADB-210"
     }
     buildTypes {
         debug { signingConfig signingConfigs.debug }
@@ -22,10 +22,10 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_21
-        targetCompatibility JavaVersion.VERSION_21
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = '21' }
+    kotlinOptions { jvmTarget = '17' }
     buildFeatures { viewBinding true }
 }
 
@@ -41,7 +41,9 @@ dependencies {
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.7.0'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0'
     implementation 'com.squareup.okio:okio:3.9.0'
-    implementation("com.flyfishxu:kadb:2.1.5") {
+
+    // KADB 2.1.0 (Exclude spake2)
+    implementation("com.flyfishxu:kadb:2.1.0") {
         exclude group: 'com.github.Flyfish233'
     }
 }
