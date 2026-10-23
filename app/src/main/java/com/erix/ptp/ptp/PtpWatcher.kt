@@ -1,20 +1,29 @@
 package com.erix.ptp.ptp
 
 import android.app.PendingIntent
-import android.content.*
-import android.hardware.usb.*
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.hardware.usb.UsbConstants
+import android.hardware.usb.UsbDevice
+import android.hardware.usb.UsbEndpoint
+import android.hardware.usb.UsbInterface
+import android.hardware.usb.UsbManager
 import android.os.Build
-import android.widget.Toast
+import android.os.Handler
+import android.os.Looper
 import com.erix.ptp.util.DebugLogger
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 object PtpWatcher {
     private const val ACTION_USB_PERM = "com.erix.ptp.USB_PERMISSION"
     @Volatile var transport: PtpUsbTransport? = null; private set
     @Volatile var storageId: Int = -1; private set
-    
     @Volatile var adbNative: AdbNativeTransport? = null; private set
-    
+
     private var usbManager: UsbManager? = null
     private var appContext: Context? = null
     private var receiver: BroadcastReceiver? = null
@@ -45,11 +54,10 @@ object PtpWatcher {
                     }
                     ACTION_USB_PERM -> {
                         if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
-                            // Delay 1.5 detik agar popup ke-2 ("Pilih aplikasi") muncul dulu
                             DebugLogger.log("Izin diberikan. Menunggu popup pemilihan app...")
-                            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                            Handler(Looper.getMainLooper()).postDelayed({
                                 getDevice(intent)?.let { connect(it) }
-                            }, 1500)
+                            }, 1500) // Delay 1.5s untuk popup ke-2
                         } else {
                             DebugLogger.log("Izin USB ditolak")
                         }
@@ -84,11 +92,10 @@ object PtpWatcher {
 
     private fun connect(device: UsbDevice) {
         CoroutineScope(Dispatchers.IO).launch {
-            DebugLogger.log("=== v77 NATIVE ADB START ===")
+            DebugLogger.log("=== v85 NATIVE ADB START ===")
             try {
                 val conn = usbManager!!.openDevice(device) ?: throw IllegalStateException("openDevice null")
                 
-                // Cari interface ADB
                 var adbIntf: UsbInterface? = null
                 for (i in 0 until device.interfaceCount) {
                     val it = device.getInterface(i)
@@ -124,9 +131,6 @@ object PtpWatcher {
                 
                 adbNative = nativeT
                 DebugLogger.log("✓ ADB Native SIAP DIGUNAKAN!")
-                // Lock kunci agar sesi stabil else {
-                    DebugLogger.log("⚠ Gagal lock kunci, sesi mungkin sementara")
-                }
                 DebugLogger.setStatus("✓ ADB Terhubung (Native)")
                 
             } catch (e: Exception) {
