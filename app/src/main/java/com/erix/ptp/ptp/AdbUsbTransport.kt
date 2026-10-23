@@ -27,7 +27,7 @@ class AdbUsbTransport(private val context: Context) {
     suspend fun connect(): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
             // ✅ devices(Context), bukan devices(UsbManager)
-            val dev = KadbUsb.devices(context).firstOrNull()
+            val dev = KadbUsb.devices(usbManager).firstOrNull()
                 ?: error("Tidak ada interface ADB. Aktifkan USB debugging di perangkat target.")
 
             if (!usbManager.hasPermission(dev)) {
