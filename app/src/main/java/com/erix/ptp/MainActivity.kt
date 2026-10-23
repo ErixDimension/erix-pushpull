@@ -64,7 +64,8 @@ class MainActivity : AppCompatActivity() {
                     val f = File(dir, "erix_push_test.txt")
                     f.writeText("ERIX v51 PUSH ${System.currentTimeMillis()}\n")
                     DebugLogger.log("PUSH ${f.length()} bytes dari ${f.absolutePath}")
-                    t.push(sid, f, "erix_push_test.txt") { s -> DebugLogger.log("  $s/${f.length()}") }
+                    val okPush = t.pushToFolder(sid, f, "erix_push_test.txt", -1) { s, total -> DebugLogger.log("  $s/$total") }
+                    DebugLogger.log(if (okPush) "✓ PUSH OK" else "✗ PUSH gagal")
                     DebugLogger.log("✓ PUSH OK")
                 } catch (e: Exception) {
                     DebugLogger.log("❌ PUSH: ${e.message}")
@@ -104,7 +105,7 @@ class MainActivity : AppCompatActivity() {
                     val dir = getExternalFilesDir(null) ?: filesDir
                     dir.mkdirs()
                     val dst = File(dir, "erix_pull_${target.name}")
-                    t.pull(sid, target.name, dst) { r -> DebugLogger.log("  $r/${target.size}") }
+                    t.pullByHandle(f.handle, dst) { r, total -> DebugLogger.log("  $r/$total") }") }
                     DebugLogger.log("✓ PULL OK: ${dst.absolutePath}")
                     DebugLogger.log("   Isi file: ${dst.readText().trim()}")
 

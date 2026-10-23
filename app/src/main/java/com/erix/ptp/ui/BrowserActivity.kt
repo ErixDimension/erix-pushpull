@@ -127,7 +127,8 @@ class BrowserActivity : AppCompatActivity() {
     }
 
     private fun transferLocalToRemote() {
-        showFolderPicker(isRemote = true) { destHandle ->
+        showFolderPicker(isRemote = true) { anyHandle ->
+            val destHandle = anyHandle as Int
             val files = selectedItems.mapNotNull { it as? FileEntry.Local }
             executeTransfer(files.size) { progress, total ->
                 doPushFiles(files, destHandle, progress, total)
@@ -136,7 +137,8 @@ class BrowserActivity : AppCompatActivity() {
     }
 
     private fun transferRemoteToLocal() {
-        showFolderPicker(isRemote = false) { destPath ->
+        showFolderPicker(isRemote = false) { anyPath ->
+            val destPath = anyPath as String
             val items = selectedItems.mapNotNull { it as? FileEntry.Remote }
             executeTransfer(items.size) { progress, total ->
                 doPullFiles(items, destPath, progress, total)
@@ -208,7 +210,7 @@ class BrowserActivity : AppCompatActivity() {
             .create()
 
         // State
-        var currentHandle = PtpUsbTransport_ParentRoot
+        var currentHandle = -1
         var currentPath = "/storage/emulated/0"
         val localMgr = LocalFileManager()
 
@@ -255,7 +257,7 @@ class BrowserActivity : AppCompatActivity() {
             setOnClickListener {
                 if (isRemote) {
                     // Untuk remote, tetap di root (belum track parent stack)
-                    currentHandle = PtpUsbTransport_ParentRoot
+                    currentHandle = -1
                     loadFolders()
                 } else {
                     val parent = File(currentPath).parentFile
@@ -317,5 +319,5 @@ class BrowserActivity : AppCompatActivity() {
         return if (i == 0) "${b} B" else "%.1f %s".format(v, u[i])
     }
 
-    private val PtpUsbTransport_ParentRoot: Int = -1
+    private val -1: Int = -1
 }
