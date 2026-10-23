@@ -22,6 +22,7 @@ class PtpUsbTransport(
         const val OP_GET_OBJECT = 0x1009
         const val OP_SEND_OBJECT_INFO = 0x100C
         const val OP_SEND_OBJECT = 0x100D
+        const val OP_DELETE_OBJECT = 0x100B
 
         const val RESP_OK = 0x2001
         const val RESP_SESSION_ALREADY_OPEN = 0x201e
@@ -134,6 +135,20 @@ class PtpUsbTransport(
         val resp = readResponse()
         if (resp.code != RESP_OK || data.size < 8) throw PtpException("GetStorageIDs gagal")
         return ByteBuffer.wrap(data, 4, 4).order(ByteOrder.LITTLE_ENDIAN).int
+    }
+
+
+    fun deleteObject(handle: Int): Boolean {
+        txn++
+        sendCommand(OP_DELETE_OBJECT, intArrayOf(handle))
+        val resp = try { readResponse() } catch (_: Exception) { return false }
+        return resp.code == RESP_OK
+    }
+
+    fun objectExists(storageId: Int, parentHandle: Int, name: String): Int? {
+        return try {
+            listDir(storageId, parentHandle).firstOrNull { it.name == name }?.handle
+        } catch (_: Exception) { null }
     }
 
     fun drain() {

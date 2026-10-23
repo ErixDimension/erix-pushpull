@@ -22,6 +22,10 @@ import com.erix.ptp.manager.PtpFileManager
 import com.erix.ptp.ptp.PtpWatcher
 import com.erix.ptp.util.DebugLogger
 import com.google.android.material.tabs.TabLayoutMediator
+import com.erix.ptp.transfer.ChunkedTransfer
+import com.erix.ptp.transfer.TransferMode
+import com.erix.ptp.transfer.ResumeState
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -124,20 +128,100 @@ class BrowserActivity : AppCompatActivity() {
         showFolderPicker(isRemote = true) { anyHandle ->
             val destHandle = anyHandle as Int
             val selected = selectedItems.mapNotNull { it as? FileEntry.Local }
-            val files = mutableListOf<File>()
-            lifecycleScope.launch(Dispatchers.IO) {
-                for (item in selected) {
-                    if (item.isDir) {
-                        File(item.absolutePath).walkTopDown().filter { it.isFile }.forEach { files.add(it) }
-                    } else {
-                        files.add(File(item.absolutePath))
+            lifecycleScope.launch(Dispatchers.Main) {
+                // Kumpulkan semua file
+                val files = withContext(Dispatchers.IO) {
+                    val out = mutableListOf<File>()
+                    for (item in selected) {
+                        if (item.isDir) File(item.absolutePath).walkTopDown().filter { it.isFile }.forEach { out.add(it) }
+                        else out.add(File(item.absolutePath))
                     }
+                    out
                 }
-                withContext(Dispatchers.Main) {
-                    executeTransfer(files.size) { progress, total ->
-                        doPushFiles(files, destHandle, progress, total)
+                if (files.isEmpty()) { Toast.makeText(this@BrowserActivity, "Tidak ada file", Toast.LENGTH_SHORT).show(); return@launch }
+
+                val totalSize = files.sumOf { it.length() }
+
+                // Cek storage TWRP
+                val info = withContext(Dispatchers.IO) { ptpMgr?.getStorageInfo() }
+                val free = info?.freeBytes ?: -1L
+                val total = info?.totalBytes ?: -1L
+
+                // Single file >= threshold? Dialog mode
+                if (files.size == 1 && files[0].length() >= ChunkedTransfer.THRESHOLD) {
+                    val singleFile = files[0]
+                    val modeDlg = TransferModeDialog(this@BrowserActivity)
+                    modeDlg.show(singleFile.name, singleFile.length(), free, total) { mode ->
+                        if (mode == null) { return@show }
+                        runUpload(files, destHandle, mode, free, total)
                     }
+                } else {
+                    // Banyak file atau file kecil → langsung mode DIRECT
+                    runUpload(files, destHandle, TransferMode.DIRECT, free, total)
                 }
+            }
+        }
+    }
+
+    private fun runUpload(files: List<File>, destHandle: Int, mode: TransferMode, free: Long, total: Long) {
+        val totalSize = files.sumOf { it.length() }
+        val dlg = TransferDialogV2(this@BrowserActivity)
+        dlg.show()
+        dlg.setStorage(total, free)
+        dlg.setTotal(totalSize)
+        val title = when (mode) {
+            TransferMode.RESUMABLE -> "Transfer (Bisa Dilanjutkan)"
+            TransferMode.DIRECT -> "Transfer (Sekali Jalan)"
+        }
+        dlg.setHeader(title, "${files.size} file, ${TransferDialogV2.fmt(totalSize)}")
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            val engine = ChunkedTransfer(this@BrowserActivity, ptpMgr!!.transport(), ptpMgr!!.storageId())
+            var doneBytes = 0L
+            var failed = 0
+            var cancelled = false
+            var failReason = ""
+
+            for ((idx, f) in files.withIndex()) {
+                if (dlg.isCancelled()) { cancelled = true; break }
+                val useChunk = mode == TransferMode.RESUMABLE && f.length() >= ChunkedTransfer.THRESHOLD
+                val result = if (useChunk) {
+                    engine.uploadResumable(
+                        localFile = f,
+                        destHandle = destHandle,
+                        onProgress = { sent, fileTotal ->
+                            dlg.updateProgress(doneBytes + sent, totalSize)
+                        },
+                        onLog = { line -> dlg.addLog(line) },
+                        isCancelled = { dlg.isCancelled() }
+                    )
+                } else {
+                    dlg.addLog("📤 [${idx+1}/${files.size}] ${f.name}")
+                    engine.uploadDirect(
+                        localFile = f,
+                        destHandle = destHandle,
+                        onProgress = { sent, fileTotal ->
+                            dlg.updateProgress(doneBytes + sent, totalSize)
+                        },
+                        onLog = { line -> dlg.addLog(line) },
+                        isCancelled = { dlg.isCancelled() }
+                    )
+                }
+                when (result) {
+                    is ChunkedTransfer.Result.Success -> doneBytes += f.length()
+                    is ChunkedTransfer.Result.Cancelled -> { cancelled = true; break }
+                    is ChunkedTransfer.Result.Failed -> { failed++; failReason = result.reason; break }
+                }
+            }
+
+            withContext(Dispatchers.Main) {
+                when {
+                    cancelled -> dlg.finishCancelled(files.size - failed, files.size)
+                    failed > 0 -> dlg.finishFailed(files.size - failed, files.size, failReason)
+                    else -> dlg.finishSuccess(files.size, files.size)
+                }
+                localFragment?.clearSelection()
+                onSelection("LOCAL", emptyList())
             }
         }
     }

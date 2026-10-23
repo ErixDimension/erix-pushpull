@@ -53,5 +53,8 @@ class PtpFileManager(
         result
     }
 
+    fun transport(): PtpUsbTransport = transport
+    fun storageId(): Int = storageId
+
     fun rootHandle(): Int = PtpUsbTransport.PARENT_ROOT
 }
