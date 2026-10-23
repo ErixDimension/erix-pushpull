@@ -5,7 +5,6 @@ import android.os.Bundle
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
-import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -20,12 +19,10 @@ import com.erix.ptp.data.FileEntry
 import com.erix.ptp.manager.LocalFileManager
 import com.erix.ptp.manager.PtpFileManager
 import com.erix.ptp.ptp.PtpWatcher
-import com.erix.ptp.util.DebugLogger
-import com.google.android.material.tabs.TabLayoutMediator
 import com.erix.ptp.transfer.ChunkedTransfer
 import com.erix.ptp.transfer.TransferMode
-import com.erix.ptp.transfer.ResumeState
-import kotlinx.coroutines.delay
+import com.erix.ptp.util.DebugLogger
+import com.google.android.material.tabs.TabLayoutMediator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -37,6 +34,7 @@ class BrowserActivity : AppCompatActivity() {
     }
 
     private lateinit var b: ActivityBrowserBinding
+    private val localMgr = LocalFileManager()
     private var localFragment: BrowserFragment? = null
     private var remoteFragment: BrowserFragment? = null
     private var selectedSide: String? = null
@@ -90,8 +88,7 @@ class BrowserActivity : AppCompatActivity() {
             }
         } else {
             if (selectedSide != null && selectedSide != side) {
-                if (side == "LOCAL") remoteFragment?.clearSelection()
-                else localFragment?.clearSelection()
+                if (side == "LOCAL") remoteFragment?.clearSelection() else localFragment?.clearSelection()
             }
             selectedSide = side
             selectedItems = items
@@ -125,38 +122,36 @@ class BrowserActivity : AppCompatActivity() {
     }
 
     private fun transferLocalToRemote() {
-        showFolderPicker(isRemote = true) { anyHandle ->
+        showFolderPicker(true) { anyHandle ->
             val destHandle = anyHandle as Int
             val selected = selectedItems.mapNotNull { it as? FileEntry.Local }
             lifecycleScope.launch(Dispatchers.Main) {
-                // Kumpulkan semua file
                 val files = withContext(Dispatchers.IO) {
                     val out = mutableListOf<File>()
                     for (item in selected) {
-                        if (item.isDir) File(item.absolutePath).walkTopDown().filter { it.isFile }.forEach { out.add(it) }
+                        if (item.isDir) File(item.absolutePath).walkTopDown()
+                            .filter { it.isFile }.forEach { out.add(it) }
                         else out.add(File(item.absolutePath))
                     }
                     out
                 }
-                if (files.isEmpty()) { Toast.makeText(this@BrowserActivity, "Tidak ada file", Toast.LENGTH_SHORT).show(); return@launch }
-
-                val totalSize = files.sumOf { it.length() }
-
-                // Cek storage TWRP
+                if (files.isEmpty()) {
+                    Toast.makeText(this@BrowserActivity, "Tidak ada file", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
                 val info = withContext(Dispatchers.IO) { ptpMgr?.getStorageInfo() }
                 val free = info?.freeBytes ?: -1L
                 val total = info?.totalBytes ?: -1L
 
-                // Single file >= threshold? Dialog mode
                 if (files.size == 1 && files[0].length() >= ChunkedTransfer.THRESHOLD) {
                     val singleFile = files[0]
-                    val modeDlg = TransferModeDialog(this@BrowserActivity)
-                    modeDlg.show(singleFile.name, singleFile.length(), free, total) { mode ->
-                        if (mode == null) { return@show }
+                    TransferModeDialog(this@BrowserActivity).show(
+                        singleFile.name, singleFile.length(), free, total
+                    ) { mode ->
+                        if (mode == null) return@show
                         runUpload(files, destHandle, mode, free, total)
                     }
                 } else {
-                    // Banyak file atau file kecil → langsung mode DIRECT
                     runUpload(files, destHandle, TransferMode.DIRECT, free, total)
                 }
             }
@@ -185,11 +180,12 @@ class BrowserActivity : AppCompatActivity() {
             for ((idx, f) in files.withIndex()) {
                 if (dlg.isCancelled()) { cancelled = true; break }
                 val useChunk = mode == TransferMode.RESUMABLE && f.length() >= ChunkedTransfer.THRESHOLD
-                val result = if (useChunk) {
+
+                val result: ChunkedTransfer.Result = if (useChunk) {
                     engine.uploadResumable(
                         localFile = f,
                         destHandle = destHandle,
-                        onProgress = { sent, fileTotal ->
+                        onProgress = { sent, _ ->
                             dlg.updateProgress(doneBytes + sent, totalSize)
                         },
                         onLog = { line -> dlg.addLog(line) },
@@ -200,13 +196,14 @@ class BrowserActivity : AppCompatActivity() {
                     engine.uploadDirect(
                         localFile = f,
                         destHandle = destHandle,
-                        onProgress = { sent, fileTotal ->
+                        onProgress = { sent, _ ->
                             dlg.updateProgress(doneBytes + sent, totalSize)
                         },
                         onLog = { line -> dlg.addLog(line) },
                         isCancelled = { dlg.isCancelled() }
                     )
                 }
+
                 when (result) {
                     is ChunkedTransfer.Result.Success -> doneBytes += f.length()
                     is ChunkedTransfer.Result.Cancelled -> { cancelled = true; break }
@@ -227,60 +224,69 @@ class BrowserActivity : AppCompatActivity() {
     }
 
     private fun transferRemoteToLocal() {
-        showFolderPicker(isRemote = false) { anyPath ->
+        showFolderPicker(false) { anyPath ->
             val destPath = anyPath as String
             val selected = selectedItems.mapNotNull { it as? FileEntry.Remote }
             val mgr = ptpMgr ?: return@showFolderPicker
-            lifecycleScope.launch(Dispatchers.IO) {
-                val items = mutableListOf<FileEntry.Remote>()
-                for (item in selected) {
-                    if (item.isDir) {
-                        items.addAll(mgr.walkFolder(item.handle))
-                    } else {
-                        items.add(item)
+            lifecycleScope.launch(Dispatchers.Main) {
+                val items = withContext(Dispatchers.IO) {
+                    val out = mutableListOf<FileEntry.Remote>()
+                    for (item in selected) {
+                        if (item.isDir) out.addAll(mgr.walkFolder(item.handle))
+                        else out.add(item)
+                    }
+                    out
+                }
+                if (items.isEmpty()) {
+                    Toast.makeText(this@BrowserActivity, "Tidak ada file", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+                val totalSize = items.sumOf { it.size }
+                val stats = withContext(Dispatchers.IO) { localMgr.getStorageStats() }
+                if (stats.usableBytes in 1 until totalSize) {
+                    Toast.makeText(this@BrowserActivity,
+                        "Storage HP kurang: butuh ${TransferDialogV2.fmt(totalSize)}, tersedia ${TransferDialogV2.fmt(stats.usableBytes)}",
+                        Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+
+                val dlg = TransferDialogV2(this@BrowserActivity)
+                dlg.show()
+                dlg.setStorage(stats.totalBytes, stats.usableBytes)
+                dlg.setTotal(totalSize)
+                dlg.setHeader("Download", "${items.size} file, ${TransferDialogV2.fmt(totalSize)}")
+                dlg.addLog("ℹ Download selalu mode langsung (PTP tidak support resume)")
+
+                withContext(Dispatchers.IO) {
+                    var doneBytes = 0L
+                    var failed = 0
+                    var cancelled = false
+                    var failReason = ""
+                    for ((idx, item) in items.withIndex()) {
+                        if (dlg.isCancelled()) { cancelled = true; break }
+                        val destFile = File(destPath, item.name)
+                        dlg.addLog("📥 [${idx+1}/${items.size}] ${item.name}")
+                        val ok = mgr.download(
+                            handle = item.handle,
+                            destFile = destFile,
+                            onProgress = { r, _ ->
+                                dlg.updateProgress(doneBytes + r, totalSize)
+                            },
+                            isCancelled = { dlg.isCancelled() }
+                        )
+                        if (ok) doneBytes += item.size
+                        else { failed++; failReason = "download gagal"; break }
+                    }
+                    withContext(Dispatchers.Main) {
+                        when {
+                            cancelled -> dlg.finishCancelled(items.size - failed, items.size)
+                            failed > 0 -> dlg.finishFailed(items.size - failed, items.size, failReason)
+                            else -> dlg.finishSuccess(items.size, items.size)
+                        }
+                        remoteFragment?.clearSelection()
+                        onSelection("REMOTE", emptyList())
                     }
                 }
-                withContext(Dispatchers.Main) {
-                    executeTransfer(items.size) { progress, total ->
-                        doPullFiles(items, destPath, progress, total)
-                    }
-                }
-            }
-        }
-    }
-
-    private fun doPushFiles(files: List<File>, destHandle: Int, progress: (Int, Int, String) -> Unit, total: Int) {
-        val mgr = ptpMgr ?: return
-        lifecycleScope.launch(Dispatchers.IO) {
-            var done = 0
-            for (f in files) {
-                withContext(Dispatchers.Main) { progress(done, total, "Upload ${f.name}...") }
-                if (mgr.upload(f, destHandle) { _, _ -> }) done++
-            }
-            withContext(Dispatchers.Main) {
-                progress(total, total, "Selesai: $done/$total")
-                Toast.makeText(this@BrowserActivity, "✓ Selesai: $done/$total", Toast.LENGTH_LONG).show()
-                localFragment?.clearSelection()
-                onSelection("LOCAL", emptyList())
-            }
-        }
-    }
-
-    private fun doPullFiles(items: List<FileEntry.Remote>, destPath: String, progress: (Int, Int, String) -> Unit, total: Int) {
-        val mgr = ptpMgr ?: return
-        val localMgr = LocalFileManager()
-        lifecycleScope.launch(Dispatchers.IO) {
-            var done = 0
-            for (it in items) {
-                val destFile = File(destPath, it.name)
-                withContext(Dispatchers.Main) { progress(done, total, "Download ${it.name}...") }
-                if (mgr.download(it.handle, destFile) { _, _ -> }) done++
-            }
-            withContext(Dispatchers.Main) {
-                progress(total, total, "Selesai: $done/$total")
-                Toast.makeText(this@BrowserActivity, "✓ Selesai: $done/$total", Toast.LENGTH_LONG).show()
-                remoteFragment?.clearSelection()
-                onSelection("REMOTE", emptyList())
             }
         }
     }
@@ -303,22 +309,14 @@ class BrowserActivity : AppCompatActivity() {
         dialogView.addView(btnUp)
         dialogView.addView(rv)
 
-        // State untuk REMOTE
         var currentHandle = -1
-        val handleStack = mutableListOf<Int>()       // untuk "Up"
-        val nameStack = mutableListOf<String>()      // untuk display path
-
-        // State untuk LOCAL
+        val handleStack = mutableListOf<Int>()
+        val nameStack = mutableListOf<String>()
         var currentPath = "/storage/emulated/0"
-
-        val localMgr = LocalFileManager()
+        val localMgr2 = LocalFileManager()
 
         fun refreshPath() {
-            tvPath.text = if (isRemote) {
-                "/TWRP/" + nameStack.joinToString("/")
-            } else {
-                currentPath
-            }
+            tvPath.text = if (isRemote) "/TWRP/" + nameStack.joinToString("/") else currentPath
         }
 
         fun loadFolders() {
@@ -328,13 +326,13 @@ class BrowserActivity : AppCompatActivity() {
                     val folders = if (isRemote) {
                         ptpMgr!!.list(currentHandle).filter { it.isDir }
                     } else {
-                        localMgr.list(currentPath).filter { it.isDir }
+                        localMgr2.list(currentPath).filter { it.isDir }
                     }
                     rv.adapter = object : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
                         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
                             val tv = TextView(ctx).apply {
                                 setPadding(24, 24, 24, 24); textSize = 16f
-                                setTextColor(0xFF000000.toInt())  // HITAM (background putih)
+                                setTextColor(0xFF000000.toInt())
                             }
                             return object : RecyclerView.ViewHolder(tv) {}
                         }
@@ -343,10 +341,7 @@ class BrowserActivity : AppCompatActivity() {
                             (holder.itemView as TextView).text = "📁 ${item.name}"
                             holder.itemView.setOnClickListener {
                                 when (item) {
-                                    is FileEntry.Local -> {
-                                        currentPath = item.absolutePath
-                                        loadFolders()
-                                    }
+                                    is FileEntry.Local -> { currentPath = item.absolutePath; loadFolders() }
                                     is FileEntry.Remote -> {
                                         handleStack.add(currentHandle)
                                         nameStack.add(item.name)
@@ -358,9 +353,7 @@ class BrowserActivity : AppCompatActivity() {
                         }
                         override fun getItemCount() = folders.size
                     }
-                } catch (e: Exception) {
-                    DebugLogger.log("Picker error: ${e.message}")
-                }
+                } catch (e: Exception) { DebugLogger.log("Picker error: ${e.message}") }
             }
         }
 
@@ -388,38 +381,6 @@ class BrowserActivity : AppCompatActivity() {
 
         loadFolders()
         dialog.show()
-    }
-
-    private fun executeTransfer(fileCount: Int, transferAction: (progress: (Int, Int, String) -> Unit, total: Int) -> Unit) {
-        val dialogView = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(48, 24, 48, 24)
-        }
-        val tvMsg = TextView(this).apply { text = "Memulai..."; textSize = 14f }
-        val bar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-            max = 100; progress = 0
-        }
-        dialogView.addView(tvMsg)
-        dialogView.addView(bar)
-
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("Transfer ($fileCount file)")
-            .setView(dialogView)
-            .setCancelable(false)
-            .create()
-
-        dialog.show()
-
-        val progress: (Int, Int, String) -> Unit = { done, total, msg ->
-            runOnUiThread {
-                tvMsg.text = msg
-                bar.progress = if (total > 0) (done * 100 / total) else 0
-                if (done >= total && total > 0) {
-                    dialog.dismiss()
-                }
-            }
-        }
-        transferAction(progress, fileCount)
     }
 
     private fun formatSize(b: Long): String {
