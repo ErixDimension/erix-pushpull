@@ -17,12 +17,13 @@ class PtpUsbTransport(
         const val OP_OPEN_SESSION = 0x1002
         const val OP_CLOSE_SESSION = 0x1003
         const val OP_GET_STORAGE_IDS = 0x1004
+        const val OP_GET_STORAGE_INFO = 0x1005
         const val OP_GET_OBJECT_HANDLES = 0x1007
         const val OP_GET_OBJECT_INFO = 0x1008
         const val OP_GET_OBJECT = 0x1009
+        const val OP_DELETE_OBJECT = 0x100B
         const val OP_SEND_OBJECT_INFO = 0x100C
         const val OP_SEND_OBJECT = 0x100D
-        const val OP_DELETE_OBJECT = 0x100B
 
         const val RESP_OK = 0x2001
         const val RESP_SESSION_ALREADY_OPEN = 0x201e
@@ -67,6 +68,14 @@ class PtpUsbTransport(
         val size: Long,
         val isDir: Boolean
     )
+
+    data class StorageInfo(
+        val totalBytes: Long,
+        val freeBytes: Long,
+        val description: String
+    )
+
+    // ============ FRAMING ============
 
     private fun sendCommand(opcode: Int, params: IntArray = IntArray(0)) {
         val len = 12 + params.size * 4
@@ -114,6 +123,8 @@ class PtpUsbTransport(
         }
     }
 
+    // ============ SESSION ============
+
     fun openSession(): Int {
         txn = 0
         sendCommand(OP_OPEN_SESSION, intArrayOf(1))
@@ -137,18 +148,35 @@ class PtpUsbTransport(
         return ByteBuffer.wrap(data, 4, 4).order(ByteOrder.LITTLE_ENDIAN).int
     }
 
-
-    fun deleteObject(handle: Int): Boolean {
+    fun getStorageInfo(storageId: Int): StorageInfo {
         txn++
-        sendCommand(OP_DELETE_OBJECT, intArrayOf(handle))
-        val resp = try { readResponse() } catch (_: Exception) { return false }
-        return resp.code == RESP_OK
+        sendCommand(OP_GET_STORAGE_INFO, intArrayOf(storageId))
+        val data = try { readFullData() } catch (e: Exception) { drain(); throw e }
+        val resp = try { readResponse() } catch (e: Exception) { drain(); throw e }
+        if (resp.code != RESP_OK || data.size < 26) throw PtpException("GetStorageInfo gagal")
+        val bb = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
+        bb.position(6)
+        val maxCap = bb.long
+        val freeSpace = bb.long
+        bb.int // FreeSpaceInImages
+        val desc = parseString(data, bb.position())
+        return StorageInfo(maxCap, freeSpace, desc)
     }
 
-    fun objectExists(storageId: Int, parentHandle: Int, name: String): Int? {
-        return try {
-            listDir(storageId, parentHandle).firstOrNull { it.name == name }?.handle
-        } catch (_: Exception) { null }
+    private fun parseString(data: ByteArray, offset: Int): String {
+        if (offset >= data.size) return ""
+        val lenBytes = data[offset].toInt() and 0xFF
+        if (lenBytes == 0) return ""
+        val sb = StringBuilder()
+        var pos = offset + 1
+        for (i in 0 until (lenBytes - 1)) {
+            if (pos + 1 >= data.size) break
+            val code = (data[pos].toInt() and 0xFF) or ((data[pos + 1].toInt() and 0xFF) shl 8)
+            if (code == 0) break
+            sb.append(code.toChar())
+            pos += 2
+        }
+        return sb.toString()
     }
 
     fun drain() {
@@ -166,6 +194,8 @@ class PtpUsbTransport(
         drain()
         try { openSession() } catch (_: Exception) {}
     }
+
+    // ============ LIST ============
 
     fun listDir(storageId: Int, parentHandle: Int): List<PtpObject> {
         txn++
@@ -211,7 +241,31 @@ class PtpUsbTransport(
         return PtpObject(handle, parentHandle, sb.toString(), size, isDir)
     }
 
-    fun pushToFolder(storageId: Int, localFile: File, remoteName: String, parentHandle: Int, onProgress: (Long, Long) -> Unit = {_,_->}): Boolean {
+    fun objectExists(storageId: Int, parentHandle: Int, name: String): Int? {
+        return try {
+            listDir(storageId, parentHandle).firstOrNull { it.name == name }?.handle
+        } catch (_: Exception) { null }
+    }
+
+    // ============ DELETE ============
+
+    fun deleteObject(handle: Int): Boolean {
+        txn++
+        sendCommand(OP_DELETE_OBJECT, intArrayOf(handle))
+        val resp = try { readResponse() } catch (_: Exception) { return false }
+        return resp.code == RESP_OK
+    }
+
+    // ============ PUSH ============
+
+    fun pushToFolder(
+        storageId: Int,
+        localFile: File,
+        remoteName: String,
+        parentHandle: Int,
+        onProgress: (Long, Long) -> Unit = {_,_->},
+        isCancelled: () -> Boolean = { false }
+    ): Boolean {
         val size = localFile.length()
         val objectInfo = buildObjectInfo(storageId, parentHandle, size, remoteName)
         txn++
@@ -233,6 +287,7 @@ class PtpUsbTransport(
             val buf = ByteArray(BULK_BUF)
             var sent = 0L
             while (sent < size) {
+                if (isCancelled()) return false
                 val n = raf.read(buf, 0, minOf(buf.size.toLong(), size - sent).toInt())
                 if (n <= 0) break
                 bulkWrite(buf.copyOfRange(0, n))
@@ -242,32 +297,6 @@ class PtpUsbTransport(
         }
         val resp2 = readResponse()
         return resp2.code == RESP_OK
-    }
-
-    fun pullByHandle(handle: Int, destFile: File, onProgress: (Long, Long) -> Unit = {_,_->}): Boolean {
-        val info = getObjectInfo(handle) ?: throw PtpException("Object $handle tidak ada")
-        val size = info.size
-        txn++
-        sendCommand(OP_GET_OBJECT, intArrayOf(handle))
-
-        FileOutputStream(destFile).use { out ->
-            var received = 0L; var first = true; var stall = 0
-            val buf = ByteArray(BULK_BUF)
-            while (received < size) {
-                val n = connection.bulkTransfer(epIn, buf, buf.size, 5000)
-                if (n < 0) { stall++; if (stall > 3) break; continue }
-                stall = 0
-                val offset = if (first) 12 else 0
-                first = false
-                if (n <= offset) continue
-                out.write(buf, offset, n - offset)
-                received += (n - offset)
-                onProgress(received, size)
-            }
-            if (received != size) throw PtpException("Pull tidak lengkap: $received/$size")
-        }
-        val resp = readResponse()
-        return resp.code == RESP_OK
     }
 
     private fun buildObjectInfo(storageId: Int, parentHandle: Int, size: Long, name: String): ByteArray {
@@ -285,6 +314,47 @@ class PtpUsbTransport(
         bb.putShort(0.toShort())
         bb.put(0.toByte()); bb.put(0.toByte()); bb.put(0.toByte())
         return bb.array().copyOf(bb.position())
+    }
+
+    // ============ PULL ============
+
+    fun pullByHandle(
+        handle: Int,
+        destFile: File,
+        onProgress: (Long, Long) -> Unit = {_,_->},
+        isCancelled: () -> Boolean = { false }
+    ): Boolean {
+        val info = getObjectInfo(handle) ?: throw PtpException("Object $handle tidak ada")
+        val size = info.size
+        txn++
+        sendCommand(OP_GET_OBJECT, intArrayOf(handle))
+
+        var success = false
+        try {
+            FileOutputStream(destFile).use { out ->
+                var received = 0L; var first = true; var stall = 0
+                val buf = ByteArray(BULK_BUF)
+                while (received < size) {
+                    if (isCancelled()) return false
+                    val n = connection.bulkTransfer(epIn, buf, buf.size, 5000)
+                    if (n < 0) { stall++; if (stall > 3) break; continue }
+                    stall = 0
+                    val offset = if (first) 12 else 0
+                    first = false
+                    if (n <= offset) continue
+                    out.write(buf, offset, n - offset)
+                    received += (n - offset)
+                    onProgress(received, size)
+                }
+                if (received != size) throw PtpException("Pull tidak lengkap: $received/$size")
+            }
+            val resp = readResponse()
+            if (resp.code != RESP_OK) throw PtpException("GetObject: 0x${resp.code.toString(16)}")
+            success = true
+            return true
+        } finally {
+            if (!success) drain()
+        }
     }
 
     override fun close() {
