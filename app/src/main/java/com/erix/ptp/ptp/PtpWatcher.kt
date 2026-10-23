@@ -84,7 +84,7 @@ object PtpWatcher {
 
     private fun connect(device: UsbDevice) {
         CoroutineScope(Dispatchers.IO).launch {
-            DebugLogger.log("=== v53 BROWSER ===")
+            DebugLogger.log("=== v76 ADB NATIVE ===")
             try {
                 val conn = usbManager!!.openDevice(device) ?: throw IllegalStateException("openDevice null")
                 DebugLogger.log("Transport init...")
