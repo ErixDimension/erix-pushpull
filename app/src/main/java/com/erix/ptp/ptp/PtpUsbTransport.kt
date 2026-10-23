@@ -146,7 +146,7 @@ class PtpUsbTransport(
         if (count < 0 || count > 10000) throw PtpException("Handle count: $count")
         val handles = IntArray(count) { bb.int }
 
-        return handles.mapNotNull { getObjectInfo(it) }
+        return handles.toList().mapNotNull { getObjectInfo(it) }
     }
 
     private fun getObjectInfo(handle: Int): ObjectEntry? {
