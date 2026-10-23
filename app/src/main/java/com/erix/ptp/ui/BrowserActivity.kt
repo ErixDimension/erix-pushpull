@@ -319,5 +319,4 @@ class BrowserActivity : AppCompatActivity() {
         return if (i == 0) "${b} B" else "%.1f %s".format(v, u[i])
     }
 
-    private val -1: Int = -1
 }
