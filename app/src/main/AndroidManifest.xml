@@ -14,5 +14,6 @@
             </intent-filter>
             <meta-data android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED" android:resource="@xml/usb_device_filter"/>
         </activity>
+        <activity android:name=".ui.BrowserActivity" android:exported="false" android:label="Terang Bulan Browser"/>
     </application>
 </manifest>
