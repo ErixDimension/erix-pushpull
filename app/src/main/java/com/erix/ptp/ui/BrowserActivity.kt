@@ -1,5 +1,6 @@
 package com.erix.ptp.ui
 
+import android.content.Context
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
@@ -12,10 +13,17 @@ import com.google.android.material.tabs.TabLayoutMediator
 
 class BrowserActivity : AppCompatActivity() {
 
+    companion object {
+        private const val PREFS = "browser_prefs"
+        private const val KEY_LAST_TAB = "last_tab"
+        private const val KEY_PATH_0 = "path_local"
+        private const val KEY_PATH_1 = "path_remote"
+    }
+
     private lateinit var b: ActivityBrowserBinding
     private var selectedSide: String? = null
     private var selectedItems: List<FileEntry> = emptyList()
-    private val fragments = arrayOfNulls<BrowserFragment>(2)
+    private val prefs by lazy { getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -26,6 +34,10 @@ class BrowserActivity : AppCompatActivity() {
         setupTabs()
         setupBottomBar()
         setupBackHandler()
+
+        // Restore last tab
+        val lastTab = prefs.getInt(KEY_LAST_TAB, 0).coerceIn(0, 1)
+        if (lastTab != 0) b.pager.setCurrentItem(lastTab, false)
     }
 
     private fun setupTabs() {
@@ -33,11 +45,13 @@ class BrowserActivity : AppCompatActivity() {
             override fun getItemCount() = 2
             override fun createFragment(position: Int): Fragment {
                 val remote = position == 1
-                val f = BrowserFragment().apply {
+                val lastPath = prefs.getString(
+                    if (remote) KEY_PATH_1 else KEY_PATH_0, null
+                )
+                return BrowserFragment().apply {
                     setParams(remote) { isRemote, items -> onSelection(isRemote, items) }
+                    if (lastPath != null) setInitialPath(lastPath)
                 }
-                fragments[position] = f
-                return f
             }
         }
         b.pager.adapter = adapter
@@ -54,19 +68,38 @@ class BrowserActivity : AppCompatActivity() {
         }
     }
 
-    /** Back button: naik folder dulu, baru keluar activity. */
+    /** Tag default FragmentStateAdapter = "f<position>" */
+    private fun currentFragment(): BrowserFragment? {
+        val tag = "f${b.pager.currentItem}"
+        return supportFragmentManager.findFragmentByTag(tag) as? BrowserFragment
+    }
+
     private fun setupBackHandler() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                val current = fragments[b.pager.currentItem]
-                if (current != null && current.goUp()) {
-                    // Berhasil naik folder — diabaikan
+                val f = currentFragment()
+                if (f != null && f.goUp()) {
+                    // Berhasil naik folder
                 } else {
                     isEnabled = false
                     onBackPressedDispatcher.onBackPressed()
                 }
             }
         })
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // Simpan state: tab aktif + path per tab
+        val editor = prefs.edit()
+        editor.putInt(KEY_LAST_TAB, b.pager.currentItem)
+        for (i in 0..1) {
+            val frag = supportFragmentManager.findFragmentByTag("f$i") as? BrowserFragment
+            frag?.getCurrentPath()?.let {
+                editor.putString(if (i == 0) KEY_PATH_0 else KEY_PATH_1, it)
+            }
+        }
+        editor.apply()
     }
 
     private fun onSelection(isRemote: Boolean, items: List<FileEntry>) {

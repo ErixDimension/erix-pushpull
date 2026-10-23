@@ -76,6 +76,9 @@ object AdbDeviceWatcher {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
             context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
         else context.registerReceiver(receiver, filter)
+
+        // Auto-reconnect: cek device yang sudah ter-colok
+        scanExistingDevices()
     }
 
     private fun getDevice(intent: Intent): UsbDevice? =
@@ -120,6 +123,28 @@ object AdbDeviceWatcher {
                 DebugLogger.setStatus("❌ ${t.message}")
                 transport?.close()
                 transport = null
+            }
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────
+    // [Fix 2026-10-24] Auto-reconnect: scan device yang sudah ter-colok
+    // saat app start (bukan hanya tunggu broadcast USB_DEVICE_ATTACHED).
+    // Berguna saat app di-kill lalu buka lagi, USB masih ter-colok.
+    // ──────────────────────────────────────────────────────────
+    private fun scanExistingDevices() {
+        val manager = usbManager ?: return
+        val ctx = appContext ?: return
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            for (dev in manager.deviceList.values) {
+                if (!AdbUsbTransport.hasAdb(dev)) continue
+                DebugLogger.log("USB sudah ter-colok saat start: ${dev.deviceName}")
+                if (manager.hasPermission(dev)) {
+                    connect(dev)
+                } else {
+                    requestPermission(dev)
+                }
+                break
             }
         }
     }

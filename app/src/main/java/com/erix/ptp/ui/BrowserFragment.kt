@@ -18,7 +18,7 @@ import kotlinx.coroutines.launch
 class BrowserFragment : Fragment() {
 
     private var _b: FragmentBrowserBinding? = null
-    private val b get() = _b!!
+    private val b get() = _b
 
     private lateinit var adapter: FileAdapter
     private val localMgr = LocalFileManager()
@@ -26,6 +26,7 @@ class BrowserFragment : Fragment() {
 
     private var isRemote: Boolean = false
     private var selectionCallback: ((Boolean, List<FileEntry>) -> Unit)? = null
+    private var initialPath: String? = null
 
     private data class NavSeg(val label: String, val path: String)
     private val navStack = mutableListOf<NavSeg>()
@@ -35,37 +36,46 @@ class BrowserFragment : Fragment() {
         this.selectionCallback = callback
     }
 
+    /** Dipanggil oleh Activity saat createFragment untuk restore state terakhir. */
+    fun setInitialPath(path: String) { this.initialPath = path }
+
+    /** Dipanggil oleh Activity saat onPause untuk simpan state. */
+    fun getCurrentPath(): String? = navStack.lastOrNull()?.path
+
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View {
-        _b = FragmentBrowserBinding.inflate(inflater, container, false)
-        return b.root
+        val vb = FragmentBrowserBinding.inflate(inflater, container, false)
+        _b = vb
+        return vb.root
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        val vb = _b ?: return
 
         adapter = FileAdapter(
             onFolderClick = { entry -> enterFolder(entry) },
             onSelectionChanged = { reportSelection() }
         )
-        b.rvFiles.layoutManager = LinearLayoutManager(requireContext())
-        b.rvFiles.adapter = adapter
+        vb.rvFiles.layoutManager = LinearLayoutManager(requireContext())
+        vb.rvFiles.adapter = adapter
 
         if (navStack.isEmpty()) {
-            if (isRemote) navStack.add(NavSeg("REMOTE", "/sdcard"))
-            else          navStack.add(NavSeg("LOCAL", localMgr.rootPath()))
+            val startPath = initialPath ?: if (isRemote) "/sdcard" else localMgr.rootPath()
+            navStack.add(NavSeg(startPath.substringAfterLast('/').ifEmpty { startPath }, startPath))
         }
 
-        b.btnUp.setOnClickListener { goUp() }
+        vb.btnUp.setOnClickListener { goUp() }
         loadCurrent()
     }
 
     private fun currentSeg(): NavSeg = navStack.last()
 
     private fun loadCurrent() {
+        val vb = _b ?: return
+        val path = currentSeg().path
         viewLifecycleOwner.lifecycleScope.launch {
-            b.tvPath.text = currentSeg().path
             val entries: List<FileEntry> = if (isRemote) {
                 val t = AdbDeviceWatcher.transport
                 if (t == null || !t.isConnected) {
@@ -74,8 +84,8 @@ class BrowserFragment : Fragment() {
                 } else {
                     try {
                         val mgr = adbMgr ?: AdbFileManager(t).also { adbMgr = it }
-                        val list = mgr.list(currentSeg().path)
-                        DebugLogger.log("[R] ${list.size} item di ${currentSeg().path}")
+                        val list = mgr.list(path)
+                        DebugLogger.log("[R] ${list.size} item di $path")
                         list
                     } catch (e: Throwable) {
                         DebugLogger.log("[R] ❌ ${e.message}")
@@ -84,14 +94,17 @@ class BrowserFragment : Fragment() {
                 }
             } else {
                 try {
-                    val list = localMgr.list(currentSeg().path)
-                    DebugLogger.log("[L] ${list.size} item di ${currentSeg().path}")
+                    val list = localMgr.list(path)
+                    DebugLogger.log("[L] ${list.size} item di $path")
                     list
                 } catch (e: Throwable) {
                     DebugLogger.log("[L] ❌ ${e.message}")
                     emptyList()
                 }
             }
+            // Guard: view mungkin sudah destroyed saat async selesai
+            val vb2 = _b ?: return@launch
+            vb2.tvPath.text = path
             adapter.setItems(entries)
         }
     }
@@ -104,7 +117,6 @@ class BrowserFragment : Fragment() {
         loadCurrent()
     }
 
-    /** Return true kalau berhasil naik, false kalau sudah di root. */
     fun goUp(): Boolean {
         if (navStack.size > 1) {
             navStack.removeAt(navStack.size - 1)
@@ -114,7 +126,7 @@ class BrowserFragment : Fragment() {
         return false
     }
 
-    fun clearSelection() = adapter.clearSelection()
+    fun clearSelection() { _b?.let { adapter.clearSelection() } }
 
     private fun reportSelection() {
         selectionCallback?.invoke(isRemote, adapter.getSelected())
