@@ -1,40 +1,18 @@
-plugins { 
-    id 'com.android.application'
-    id 'org.jetbrains.kotlin.android' 
-}
+plugins { id 'com.android.application'; id 'org.jetbrains.kotlin.android' }
 android {
     namespace 'com.erix.ptp'
     compileSdk 34
-    ndkVersion '25.2.9519653'
-
-    externalNativeBuild {
-        cmake {
-            path 'src/main/cpp/CMakeLists.txt'
-            version '3.22.1'
-        }
-    }
-
     defaultConfig {
         applicationId "com.erix.ptp"
         minSdk 26
         targetSdk 34
-        versionCode 103
-        versionName "1.0.103-USBREQ-FIX"
-        
-        ndk {
-            abiFilters 'arm64-v8a'
-        }
+        versionCode 104
+        versionName "1.0.104-DADB"
     }
-
     buildTypes {
-        debug { 
-            signingConfig signingConfigs.debug 
-        }
-        release { 
-            minifyEnabled false 
-        }
+        debug { signingConfig signingConfigs.debug }
+        release { minifyEnabled false }
     }
-
     signingConfigs {
         debug {
             storeFile file('debug.keystore')
@@ -43,23 +21,20 @@ android {
             keyPassword 'android'
         }
     }
-
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
-    kotlinOptions { 
-        jvmTarget = '17' 
-    }
-    buildFeatures { 
-        viewBinding true 
-    }
+    kotlinOptions { jvmTarget = '17' }
+    buildFeatures { viewBinding true }
 }
-
 dependencies {
     implementation 'androidx.core:core-ktx:1.12.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.7.0'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0'
+    // Library Utama
+    implementation "dev.mobile:dadb:1.2.10"
+    // Dependensi transitif yang dibutuhkan dadb untuk pairing
+    implementation "com.github.MuntashirAkon.spake2-java:spake2-android:1.1.0"
 }
