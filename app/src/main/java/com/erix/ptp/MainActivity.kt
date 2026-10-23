@@ -21,7 +21,18 @@ class MainActivity : AppCompatActivity() {
 
         AdbDeviceWatcher.start(this)
 
-        lifecycleScope.launch { DebugLogger.logs.collect { b.tvLog.text = it } }
+        lifecycleScope.launch {
+            DebugLogger.logs.collect { fullLog ->
+                // Ambil 4000 karakter terakhir saja agar UI tidak freeze (ANR)
+                val displayLog = if (fullLog.length > 4000) {
+                    "... (log dipotong)\n" + fullLog.takeLast(4000)
+                } else {
+                    fullLog
+                }
+                b.tvLog.text = displayLog
+            }
+        }
+
         lifecycleScope.launch {
             DebugLogger.status.collect {
                 b.tvStatus.text = it
@@ -31,7 +42,7 @@ class MainActivity : AppCompatActivity() {
 
         b.btnClear.setOnClickListener { DebugLogger.clear() }
         b.btnCopy.setOnClickListener {
-            val text = b.tvLog.text.toString()
+            val text = DebugLogger.logs.value
             if (text.isNotBlank()) {
                 val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
                 clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Log", text))

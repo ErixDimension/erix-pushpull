@@ -13,15 +13,10 @@ import com.erix.ptp.databinding.FragmentBrowserBinding
 import com.erix.ptp.manager.AdbFileManager
 import com.erix.ptp.manager.LocalFileManager
 import com.erix.ptp.util.DebugLogger
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
-/**
- * BrowserFragment — dual-mode: satu instance tab LOCAL, satu tab REMOTE.
- * REMOTE: AdbFileManager (via AdbDeviceWatcher.transport)
- * LOCAL : LocalFileManager (java.io.File)
- */
 class BrowserFragment : Fragment() {
-
     private var _b: FragmentBrowserBinding? = null
     private val b get() = _b
 
@@ -32,6 +27,7 @@ class BrowserFragment : Fragment() {
     private var isRemote: Boolean = false
     private var selectionCallback: ((Boolean, List<FileEntry>) -> Unit)? = null
     private var initialPath: String? = null
+    private var loadJob: Job? = null // Mencegah spam loading
 
     private data class NavSeg(val label: String, val path: String)
     private val navStack = mutableListOf<NavSeg>()
@@ -42,14 +38,10 @@ class BrowserFragment : Fragment() {
     }
 
     fun setInitialPath(path: String) { this.initialPath = path }
-
     fun getCurrentPath(): String? = navStack.lastOrNull()?.path
-
     fun isRemoteSide(): Boolean = isRemote
 
-    override fun onCreateView(
-        inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
-    ): View {
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         val vb = FragmentBrowserBinding.inflate(inflater, container, false)
         _b = vb
         return vb.root
@@ -80,11 +72,16 @@ class BrowserFragment : Fragment() {
     private fun loadCurrent() {
         val vb = _b ?: return
         val path = currentSeg().path
-        viewLifecycleOwner.lifecycleScope.launch {
+        
+        // Batalkan request sebelumnya jika masih berjalan
+        loadJob?.cancel()
+        
+        loadJob = viewLifecycleOwner.lifecycleScope.launch {
+            vb.tvPath.text = path
             val entries: List<FileEntry> = if (isRemote) {
                 val t = AdbDeviceWatcher.transport
                 if (t == null || !t.isConnected) {
-                    DebugLogger.log("[R] ADB belum terhubung — colok device dulu")
+                    DebugLogger.log("[R] ADB belum terhubung")
                     emptyList()
                 } else {
                     try {
@@ -108,7 +105,6 @@ class BrowserFragment : Fragment() {
                 }
             }
             val vb2 = _b ?: return@launch
-            vb2.tvPath.text = path
             adapter.setItems(entries)
         }
     }
@@ -130,9 +126,7 @@ class BrowserFragment : Fragment() {
         return false
     }
 
-    /** Reload isi folder saat ini. Dipanggil Activity setelah transfer selesai. */
     fun refresh() { loadCurrent() }
-
     fun clearSelection() { _b?.let { adapter.clearSelection() } }
 
     private fun reportSelection() {
@@ -140,6 +134,7 @@ class BrowserFragment : Fragment() {
     }
 
     override fun onDestroyView() {
+        loadJob?.cancel()
         _b = null
         super.onDestroyView()
     }
