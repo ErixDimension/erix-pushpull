@@ -2,6 +2,7 @@ package com.erix.ptp.ptp
 
 import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbEndpoint
+import android.hardware.usb.UsbInterface
 import com.erix.ptp.util.DebugLogger
 import java.io.Closeable
 import java.io.IOException
@@ -10,42 +11,26 @@ import java.nio.ByteOrder
 
 class AdbNativeTransport(
     connection: UsbDeviceConnection,
+    val usbInterface: UsbInterface,
     private val inEp: UsbEndpoint,
     private val outEp: UsbEndpoint,
     private val crypto: AdbCrypto
 ) : Closeable {
 
     companion object {
-        const val A_CNXN = 0x4e584e43.toInt()
-        const val A_AUTH = 0x48545541.toInt()
-        const val A_VERSION_MIN = 0x01000000
-        const val A_MAX_PAYLOAD = 4096
-        const val ADB_AUTH_TOKEN = 1
-        const val ADB_AUTH_SIGNATURE = 2
-        const val ADB_AUTH_RSAPUBLICKEY = 3
+        const val A_CNXN = 0x4e584e43.toInt(); const val A_AUTH = 0x48545541.toInt()
+        const val A_VERSION_MIN = 0x01000000; const val A_MAX_PAYLOAD = 4096
+        const val ADB_AUTH_TOKEN = 1; const val ADB_AUTH_SIGNATURE = 2; const val ADB_AUTH_RSAPUBLICKEY = 3
     }
 
     init {
-        if (!AdbNative.isLoaded()) {
-            throw IOException("liberixadb.so tidak ter-load")
-        }
-        DebugLogger.log("[NATIVE] Getting FD...")
-        try {
-            val m = UsbDeviceConnection::class.java.getDeclaredMethod("getFileDescriptor")
-            m.isAccessible = true
-            val fd = m.invoke(connection) as Int
-            DebugLogger.log("[NATIVE] FD=$fd")
-            if (fd < 0) throw IOException("FD invalid: $fd")
-            
-            DebugLogger.log("[NATIVE] initUsb(fd, out=0x${Integer.toHexString(outEp.address)}, in=0x${Integer.toHexString(inEp.address)})")
-            if (!AdbNative.initUsb(fd, outEp.address, inEp.address)) {
-                throw IOException("initUsb return false")
-            }
-            DebugLogger.log("[NATIVE] ✓ initUsb OK")
-        } catch (e: IOException) {
-            throw e
-        } catch (t: Throwable) {
-            throw IOException("Init error: ${t.message}")
+        if (!AdbNative.isLoaded()) throw IOException("Native lib not loaded")
+        val m = UsbDeviceConnection::class.java.getDeclaredMethod("getFileDescriptor")
+        m.isAccessible = true
+        val fd = m.invoke(connection) as Int
+        DebugLogger.log("[NATIVE] FD=$fd, claim interface ${usbInterface.id} via C++")
+        if (!AdbNative.initUsb(fd, usbInterface.id)) {
+            throw IOException("libusb gagal claim interface")
         }
     }
 
@@ -68,7 +53,7 @@ class AdbNativeTransport(
     }
 
     fun connect() {
-        DebugLogger.log("[ADB] Connect: send CNXN")
+        DebugLogger.log("[ADB] Sending CNXN...")
         sendMsg(A_CNXN, A_VERSION_MIN, A_MAX_PAYLOAD, "host::erix\u0000".toByteArray())
         var attempts = 0
         while (attempts < 10) {
@@ -77,30 +62,26 @@ class AdbNativeTransport(
             if (data.size < 24) continue
             val bb = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
             val cmd = bb.int; val a0 = bb.int; bb.int; val len = bb.int
-            DebugLogger.log("[ADB] Cmd=0x${Integer.toHexString(cmd)} len=$len")
             when (cmd) {
-                A_CNXN -> { DebugLogger.log("✅ ADB TERHUBUNG!"); return }
+                A_CNXN -> { DebugLogger.log("✅ ADB TERHUBUNG (libusb)!"); return }
                 A_AUTH -> {
                     if (a0 == ADB_AUTH_TOKEN) {
-                        DebugLogger.log("🔑 AUTH Token diterima")
+                        DebugLogger.log("🔑 AUTH Token")
                         val token = ByteArray(len.coerceAtMost(data.size - 24))
                         bb.get(token)
                         val sig = crypto.sign(token)
-                        if (sig != null) {
-                            DebugLogger.log("[ADB] Kirim signature")
-                            sendMsg(A_AUTH, ADB_AUTH_SIGNATURE, 0, sig)
-                        } else {
-                            DebugLogger.log("📱 Kirim PUBLIC KEY - KLIK IZINKAN DI TWRP!")
+                        if (sig != null) sendMsg(A_AUTH, ADB_AUTH_SIGNATURE, 0, sig)
+                        else {
+                            DebugLogger.log("📱 IZINKAN DI TWRP!")
                             sendMsg(A_AUTH, ADB_AUTH_RSAPUBLICKEY, 0, crypto.publicKeyBytes())
                             sendMsg(A_CNXN, A_VERSION_MIN, A_MAX_PAYLOAD, "host::erix\u0000".toByteArray())
                         }
                     }
                 }
-                else -> DebugLogger.log("⚠ Unknown cmd")
+                else -> DebugLogger.log("⚠ Cmd 0x${Integer.toHexString(cmd)}")
             }
         }
-        throw IOException("Timeout ($attempts attempts)")
+        throw IOException("Handshake timeout")
     }
-
     override fun close() {}
 }
