@@ -1,3 +1,10 @@
+// ═════════════════════════════════════════════════════════════════
+// ⚠️  DO NOT DELETE / DO NOT OVERWRITE — WATCHER USB ADB
+// Sudah terhubung dengan AdbUsbTransport (bukan PTP lagi).
+// Kalau mau eksperimen, buat AdbDeviceWatcher_v2.kt.
+// ═════════════════════════════════════════════════════════════════
+
+
 package com.erix.ptp.adb
 
 import android.app.PendingIntent

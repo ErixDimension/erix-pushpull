@@ -1,3 +1,10 @@
+// ═════════════════════════════════════════════════════════════════
+// ⚠️  DO NOT DELETE / DO NOT OVERWRITE — WRAPPER API PUBLIK
+// Wajib untuk AdbDeviceWatcher. Jangan dihapus.
+// Kalau mau ubah, edit AdbLibUsbTransport.kt (bukan file ini).
+// ═════════════════════════════════════════════════════════════════
+
+
 package com.erix.ptp.ptp
 
 import android.content.Context

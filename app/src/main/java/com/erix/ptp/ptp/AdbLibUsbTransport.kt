@@ -1,3 +1,25 @@
+// ═════════════════════════════════════════════════════════════════
+// ⚠️  DO NOT DELETE / DO NOT OVERWRITE — KODE PRODUKSI YANG SUDAH BEKERJA
+// ─────────────────────────────────────────────────────────────────────
+// Status  : ✅ TERVERIFIKASI HIJAU + ADB TERHUBUNG di device B
+// Tanggal : 2026-10-23
+// Bukti   : log "✓ ADB TERHUBUNG (/dev/bus/usb/...)" + popup RSA muncul
+//
+// Stack yang terbukti bekerja:
+//   AGP 8.9.1 | Kotlin 2.3.20 | minSdk 26 | Java 1.8
+//   Library  : com.tananaev:adblib:1.3
+//   USB      : UsbSocket bungkus UsbDeviceConnection → java.net.Socket
+//   Auth     : AdbCrypto RSA 2048 + A_AUTH(RSAPUBLICKEY) → popup RSA
+//
+// Jika butuh eksperimen, buat file baru (mis. AdbLibUsbTransport_v2.kt),
+// JANGAN edit file ini tanpa backup + uji ulang.
+//
+// Rollback cepat:
+//   cp ~/erix-gh/.working-backup/20261023_235404/ptp/AdbLibUsbTransport.kt \
+//      ~/erix-gh/app/src/main/java/com/erix/ptp/ptp/AdbLibUsbTransport.kt
+// ═════════════════════════════════════════════════════════════════
+
+
 package com.erix.ptp.ptp
 
 import android.content.Context
