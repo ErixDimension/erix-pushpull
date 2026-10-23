@@ -208,12 +208,12 @@ class BrowserActivity : AppCompatActivity() {
             setPadding(24, 16, 24, 16)
         }
         val tvPath = TextView(ctx).apply {
-            setTextColor(0xFF00E5FF.toInt()); textSize = 12f; setPadding(0, 0, 0, 8)
+            setTextColor(0xFF00A0A0.toInt()); textSize = 12f; setPadding(0, 0, 0, 8)
         }
         val btnUp = Button(ctx).apply { text = "↑ Naik" }
         val rv = RecyclerView(ctx).apply {
             layoutManager = LinearLayoutManager(ctx)
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 800)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1200)
         }
         dialogView.addView(tvPath)
         dialogView.addView(btnUp)
@@ -250,7 +250,7 @@ class BrowserActivity : AppCompatActivity() {
                         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
                             val tv = TextView(ctx).apply {
                                 setPadding(24, 24, 24, 24); textSize = 16f
-                                setTextColor(0xFFFFFFFF.toInt())
+                                setTextColor(0xFF000000.toInt())  // HITAM (background putih)
                             }
                             return object : RecyclerView.ViewHolder(tv) {}
                         }
