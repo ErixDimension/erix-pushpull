@@ -2,6 +2,7 @@ package com.erix.ptp
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
@@ -9,6 +10,7 @@ import com.erix.ptp.adb.AdbDeviceWatcher
 import com.erix.ptp.databinding.ActivityMainBinding
 import com.erix.ptp.ui.BrowserActivity
 import com.erix.ptp.util.DebugLogger
+import com.erix.ptp.util.PermissionHelper
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
@@ -23,12 +25,7 @@ class MainActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             DebugLogger.logs.collect { fullLog ->
-                // Ambil 4000 karakter terakhir saja agar UI tidak freeze (ANR)
-                val displayLog = if (fullLog.length > 4000) {
-                    "... (log dipotong)\n" + fullLog.takeLast(4000)
-                } else {
-                    fullLog
-                }
+                val displayLog = if (fullLog.length > 4000) "... (log dipotong)\n" + fullLog.takeLast(4000) else fullLog
                 b.tvLog.text = displayLog
             }
         }
@@ -38,6 +35,10 @@ class MainActivity : AppCompatActivity() {
                 b.tvStatus.text = it
                 b.btnOpenBrowser.isEnabled = AdbDeviceWatcher.transport?.isConnected == true
             }
+        }
+
+        b.btnPermission.setOnClickListener {
+            PermissionHelper.requestStoragePermission(this)
         }
 
         b.btnClear.setOnClickListener { DebugLogger.clear() }
@@ -56,6 +57,15 @@ class MainActivity : AppCompatActivity() {
             } else {
                 Toast.makeText(this, "ADB belum terhubung — colok device dulu", Toast.LENGTH_SHORT).show()
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (PermissionHelper.hasStoragePermission(this)) {
+            b.btnPermission.visibility = View.GONE
+        } else {
+            b.btnPermission.visibility = View.VISIBLE
         }
     }
 }
