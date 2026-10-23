@@ -1,4 +1,5 @@
 package com.erix.ptp.ptp
+
 import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbEndpoint
 import com.erix.ptp.util.DebugLogger
@@ -7,52 +8,89 @@ import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-class AdbNativeTransport(connection: UsbDeviceConnection, val inEp: UsbEndpoint, val outEp: UsbEndpoint, private val crypto: AdbCrypto) : Closeable {
+class AdbNativeTransport(
+    connection: UsbDeviceConnection,
+    val inEp: UsbEndpoint,
+    val outEp: UsbEndpoint,
+    private val crypto: AdbCrypto
+) : Closeable {
+
     companion object {
-        const val A_CNXN = 0x4e584e43.toInt(); const val A_AUTH = 0x48545541.toInt()
-        const val A_VERSION_MIN = 0x01000000; const val A_MAX_PAYLOAD = 4096
-        const val ADB_AUTH_TOKEN = 1; const val ADB_AUTH_SIGNATURE = 2; const val ADB_AUTH_RSAPUBLICKEY = 3
+        const val A_CNXN = 0x4e584e43.toInt()
+        const val A_AUTH = 0x48545541.toInt()
+        const val A_VERSION_MIN = 0x01000000
+        const val A_MAX_PAYLOAD = 4096
+        const val ADB_AUTH_TOKEN = 1
+        const val ADB_AUTH_SIGNATURE = 2
+        const val ADB_AUTH_RSAPUBLICKEY = 3
     }
+
     init {
-        val fdField = UsbDeviceConnection::class.java.getDeclaredMethod("getFileDescriptor")
-        fdField.isAccessible = true
-        val fd = fdField.invoke(connection) as Int
-        if (!AdbNative.initLibusb(fd)) throw IOException("Gagal inisialisasi libusb")
+        if (!AdbNative.isLoaded()) {
+            throw IOException("Native library erixadb.so TIDAK TERLOAD")
+        }
+        try {
+            val m = UsbDeviceConnection::class.java.getDeclaredMethod("getFileDescriptor")
+            m.isAccessible = true
+            val fd = m.invoke(connection) as Int
+            if (fd < 0) throw IOException("FD invalid: $fd")
+            if (!AdbNative.initLibusb(fd)) {
+                throw IOException("libusb gagal wrap FD (initLibusb=false)")
+            }
+            DebugLogger.log("[LIBUSB] FD=$fd berhasil di-wrap")
+        } catch (e: IOException) {
+            throw e
+        } catch (t: Throwable) {
+            throw IOException("Gagal get FD: ${t.message}")
+        }
     }
+
     private fun sendMsg(cmd: Int, a0: Int, a1: Int, payload: ByteArray) {
         val bb = ByteBuffer.allocate(24 + payload.size).order(ByteOrder.LITTLE_ENDIAN)
         bb.putInt(cmd); bb.putInt(a0); bb.putInt(a1); bb.putInt(payload.size)
         var s = 0; for (b in payload) s += (b.toInt() and 0xFF)
         bb.putInt(s); bb.putInt(cmd xor -1); bb.put(payload)
-        AdbNative.bulkTransfer(outEp.address, bb.array(), 0, 24 + payload.size, 5000)
+        val r = AdbNative.bulkTransfer(outEp.address, bb.array(), 0, 24 + payload.size, 5000)
+        if (r < 0) throw IOException("TX fail: $r")
     }
+
     private fun recvMsg(): ByteArray {
         val buf = ByteArray(65536)
         val n = AdbNative.bulkTransfer(inEp.address, buf, 0, buf.size, 5000)
-        if (n < 0) throw IOException("RX gagal")
+        if (n < 0) throw IOException("RX fail (libusb err: $n)")
         return buf.copyOf(n)
     }
+
     fun connect() {
         DebugLogger.log("[LIBUSB] Kirim CNXN...")
         sendMsg(A_CNXN, A_VERSION_MIN, A_MAX_PAYLOAD, "host::erix\u0000".toByteArray())
-        while (true) {
+        var attempts = 0
+        while (attempts < 10) {
+            attempts++
             val data = recvMsg()
+            if (data.size < 24) continue
             val bb = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
             val cmd = bb.int; val a0 = bb.int; bb.int; val len = bb.int
-            if (cmd == A_CNXN) { DebugLogger.log("✅ ADB TERHUBUNG (libusb)!"); return }
-            if (cmd == A_AUTH) {
-                if (a0 == ADB_AUTH_TOKEN) {
-                    val token = ByteArray(len); bb.get(token)
-                    val sig = crypto.sign(token)
-                    if (sig != null) sendMsg(A_AUTH, ADB_AUTH_SIGNATURE, 0, sig)
-                    else {
-                        DebugLogger.log("📱 IZINKAN DI TWRP!")
-                        sendMsg(A_AUTH, ADB_AUTH_RSAPUBLICKEY, 0, crypto.publicKeyBytes())
-                        sendMsg(A_CNXN, A_VERSION_MIN, A_MAX_PAYLOAD, "host::erix\u0000".toByteArray())
+            when (cmd) {
+                A_CNXN -> { DebugLogger.log("✅ ADB TERHUBUNG (libusb)!"); return }
+                A_AUTH -> {
+                    if (a0 == ADB_AUTH_TOKEN) {
+                        val token = ByteArray(len.coerceAtMost(data.size - 24))
+                        bb.get(token)
+                        val sig = crypto.sign(token)
+                        if (sig != null) sendMsg(A_AUTH, ADB_AUTH_SIGNATURE, 0, sig)
+                        else {
+                            DebugLogger.log("📱 IZINKAN DI TWRP!")
+                            sendMsg(A_AUTH, ADB_AUTH_RSAPUBLICKEY, 0, crypto.publicKeyBytes())
+                            sendMsg(A_CNXN, A_VERSION_MIN, A_MAX_PAYLOAD, "host::erix\u0000".toByteArray())
+                        }
                     }
                 }
+                else -> DebugLogger.log("⚠ Cmd: 0x${Integer.toHexString(cmd)}")
             }
         }
+        throw IOException("Handshake timeout (10 percobaan)")
     }
+
     override fun close() {}
 }
