@@ -68,7 +68,7 @@ class TransferDialogV2(private val ctx: Activity) {
             else { cancelled.set(true); btnCancel?.text = "Membatalkan..."; btnCancel?.isEnabled = false }
         }
 
-        dialog = AlertDialog.Builder(ctx, R.style.Theme_AppCompat_Dialog)
+        dialog = AlertDialog.Builder(ctx, R.style.Theme_ErixDialog)
             .setView(v).setCancelable(false).create()
         dialog?.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         dialog?.show()

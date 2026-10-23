@@ -10,6 +10,19 @@ class PtpFileManager(
     private val transport: PtpUsbTransport,
     private val storageId: Int
 ) {
+    fun transport(): PtpUsbTransport = transport
+    fun storageId(): Int = storageId
+    fun rootHandle(): Int = PtpUsbTransport.PARENT_ROOT
+
+    data class StorageInfo(val totalBytes: Long, val freeBytes: Long, val description: String)
+
+    suspend fun getStorageInfo(): StorageInfo? = withContext(Dispatchers.IO) {
+        try {
+            val info = transport.getStorageInfo(storageId)
+            StorageInfo(info.totalBytes, info.freeBytes, info.description)
+        } catch (_: Exception) { null }
+    }
+
     suspend fun list(parentHandle: Int): List<FileEntry.Remote> = withContext(Dispatchers.IO) {
         transport.listDir(storageId, parentHandle).map { obj ->
             FileEntry.Remote(
@@ -22,19 +35,30 @@ class PtpFileManager(
         }.sortedWith(compareBy({ !it.isDir }, { it.name.lowercase() }))
     }
 
-    suspend fun upload(localFile: File, parentHandle: Int, onProgress: (Long, Long) -> Unit = {_,_->}): Boolean = withContext(Dispatchers.IO) {
+    suspend fun upload(
+        localFile: File,
+        parentHandle: Int,
+        onProgress: (Long, Long) -> Unit = {_,_->},
+        isCancelled: () -> Boolean = { false }
+    ): Boolean = withContext(Dispatchers.IO) {
         try {
-            transport.pushToFolder(storageId, localFile, localFile.name, parentHandle) { s, t -> onProgress(s, t) }
+            transport.pushToFolder(storageId, localFile, localFile.name, parentHandle,
+                { s, t -> onProgress(s, t) }, isCancelled)
         } catch (_: Exception) { false }
     }
 
-    suspend fun download(handle: Int, destFile: File, onProgress: (Long, Long) -> Unit = {_,_->}): Boolean = withContext(Dispatchers.IO) {
+    suspend fun download(
+        handle: Int,
+        destFile: File,
+        onProgress: (Long, Long) -> Unit = {_,_->},
+        isCancelled: () -> Boolean = { false }
+    ): Boolean = withContext(Dispatchers.IO) {
         try {
-            transport.pullByHandle(handle, destFile) { r, t -> onProgress(r, t) }
+            transport.pullByHandle(handle, destFile,
+                { r, t -> onProgress(r, t) }, isCancelled)
         } catch (_: Exception) { false }
     }
 
-    /** Walk folder recursively, return semua file (bukan folder). */
     suspend fun walkFolder(folderHandle: Int): List<FileEntry.Remote> = withContext(Dispatchers.IO) {
         val result = mutableListOf<FileEntry.Remote>()
         val queue = mutableListOf(folderHandle)
@@ -52,9 +76,4 @@ class PtpFileManager(
         }
         result
     }
-
-    fun transport(): PtpUsbTransport = transport
-    fun storageId(): Int = storageId
-
-    fun rootHandle(): Int = PtpUsbTransport.PARENT_ROOT
 }

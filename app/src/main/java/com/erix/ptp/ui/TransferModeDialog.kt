@@ -104,7 +104,7 @@ class TransferModeDialog(private val ctx: Activity) {
             btnStart.isEnabled = rbResumable.isChecked || rbDirect.isChecked
         }
 
-        val dialog = AlertDialog.Builder(ctx, R.style.Theme_AppCompat_Dialog)
+        val dialog = AlertDialog.Builder(ctx, R.style.Theme_ErixDialog)
             .setView(v).setCancelable(false).create()
         dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
 
