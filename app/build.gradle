@@ -6,8 +6,8 @@ android {
         applicationId "com.erix.ptp"
         minSdk 26
         targetSdk 34
-        versionCode 108
-        versionName "1.0.108-DADB-READY"
+        versionCode 109
+        versionName "1.0.109-OKIO"
     }
     buildTypes {
         debug { signingConfig signingConfigs.debug }
@@ -35,7 +35,8 @@ dependencies {
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0'
     
     // DADB — exclude spake2 (hanya untuk wireless pairing, kita pakai USB)
-    implementation("dev.mobile:dadb:1.2.10") {
+    implementation("dev.mobile:dadb:1.2.10")
+    implementation("com.squareup.okio:okio:3.6.0") {
         exclude group: 'com.github.MuntashirAkon.spake2-java'
         exclude group: 'com.github.MuntashirAkon'
     }

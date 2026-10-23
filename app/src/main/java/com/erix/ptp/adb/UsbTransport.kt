@@ -2,24 +2,33 @@ package com.erix.ptp.adb
 
 import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbEndpoint
-import dadb.AdbTransport
-import java.io.Closeable
+import okio.Buffer
+import okio.Source
+import okio.Sink
+import okio.Timeout
 import java.io.IOException
 
-class UsbTransport(
+class UsbSource(
     private val connection: UsbDeviceConnection,
-    private val inEp: UsbEndpoint,
-    private val outEp: UsbEndpoint
-) : AdbTransport, Closeable {
-
-    override fun read(): ByteArray {
-        val buf = ByteArray(16384) // 16KB Max
+    private val inEp: UsbEndpoint
+) : Source {
+    override fun read(sink: Buffer, byteCount: Long): Long {
+        val buf = ByteArray(16384)
         val n = connection.bulkTransfer(inEp, buf, buf.size, 10000)
         if (n < 0) throw IOException("Read timeout (err: $n)")
-        return buf.copyOf(n)
+        sink.write(buf, 0, n)
+        return n.toLong()
     }
+    override fun timeout(): Timeout = Timeout.NONE
+    override fun close() {}
+}
 
-    override fun write(data: ByteArray) {
+class UsbSink(
+    private val connection: UsbDeviceConnection,
+    private val outEp: UsbEndpoint
+) : Sink {
+    override fun write(source: Buffer, byteCount: Long) {
+        val data = source.readByteArray()
         var off = 0
         while (off < data.size) {
             val chunk = minOf(16384, data.size - off)
@@ -29,9 +38,7 @@ class UsbTransport(
             off += n
         }
     }
-
-    override fun close() {
-        try { connection.releaseInterface(null) } catch (_: Exception) {}
-        try { connection.close() } catch (_: Exception) {}
-    }
+    override fun flush() {}
+    override fun timeout(): Timeout = Timeout.NONE
+    override fun close() {}
 }

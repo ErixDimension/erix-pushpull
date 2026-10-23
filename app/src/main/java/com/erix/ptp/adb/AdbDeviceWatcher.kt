@@ -8,6 +8,9 @@ import android.os.Handler
 import android.os.Looper
 import com.erix.ptp.util.DebugLogger
 import dadb.AdbKeyPair
+import java.security.KeyPairGenerator
+import java.security.interfaces.RSAPublicKey
+import java.security.interfaces.RSAPrivateKey
 import dadb.Dadb
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -111,14 +114,23 @@ object AdbDeviceWatcher {
                 val connection = manager.openDevice(device) ?: throw IllegalStateException("openDevice null")
                 if (!connection.claimInterface(adbIntf, true)) throw IllegalStateException("Claim interface gagal")
 
-                // 3. Buat KeyPair & Transport
-                DebugLogger.log("Membuat KeyPair & Transport...")
-                val keyPair = AdbKeyPair.generate()
-                val transport = UsbTransport(connection, fi, fo)
+                // 3. Buat KeyPair (RSA 2048)
+                DebugLogger.log("Membuat RSA KeyPair...")
+                val kpg = KeyPairGenerator.getInstance("RSA")
+                kpg.initialize(2048)
+                val kp = kpg.generateKeyPair()
+                val adbKeyPair = AdbKeyPair(
+                    kp.public as RSAPublicKey,
+                    kp.private as RSAPrivateKey
+                )
+
+                // 4. Buat Source & Sink (Okio)
+                val source = UsbSource(connection, fi)
+                val sink = UsbSink(connection, fo)
                 
-                // 4. Inisialisasi Dadb
+                // 5. Inisialisasi Dadb
                 DebugLogger.log("Membuat Dadb Instance...")
-                val dadb = Dadb.create(transport, keyPair)
+                val dadb = Dadb.create(source, sink, adbKeyPair)
                 
                 dadbInstance = dadb
                 DebugLogger.log("✓ DADB TERHUBUNG!")
