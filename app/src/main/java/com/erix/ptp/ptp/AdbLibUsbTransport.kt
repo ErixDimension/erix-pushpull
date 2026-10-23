@@ -272,4 +272,33 @@ private class UsbSocket(
     override fun close() { /* connection ditutup oleh transport */ }
     override fun isConnected(): Boolean = true
     override fun isClosed(): Boolean = false
+
+    // ──────────────────────────────────────────────────────────
+    // [Stage 2a 2026-10-24] Tambahan untuk browser — addition only.
+    // Method existing (connect, push, pull, close) TIDAK diubah.
+    // ──────────────────────────────────────────────────────────
+    /**
+     * Jalankan shell command via AdbConnection, kembalikan stdout lengkap.
+     * Blocking — panggil dari Dispatchers.IO.
+     * Cocok untuk command yang terminate cepat (ls, df, stat, find, cat kecil).
+     * Untuk transfer besar pakai push()/pull() yang streaming.
+     */
+    fun exec(command: String): String {
+        val ac = adbConn ?: error("ADB belum terhubung")
+        val stream = ac.open("shell:$command")
+        val sb = StringBuilder()
+        try {
+            while (true) {
+                val chunk = try {
+                    stream.read()
+                } catch (e: java.io.IOException) {
+                    break
+                }
+                sb.append(String(chunk, Charsets.UTF_8))
+            }
+        } finally {
+            runCatching { stream.close() }
+        }
+        return sb.toString()
+    }
 }

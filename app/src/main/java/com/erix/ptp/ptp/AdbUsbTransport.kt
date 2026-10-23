@@ -77,4 +77,13 @@ class AdbUsbTransport(
         lib = null
         DebugLogger.setStatus("ADB terputus")
     }
+
+    // ──────────────────────────────────────────────────────────
+    // [Stage 2a 2026-10-24] Pass-through untuk AdbFileManager.
+    // ──────────────────────────────────────────────────────────
+    /** Jalankan shell command via transport — suspend. */
+    suspend fun exec(command: String): String = withContext(Dispatchers.IO) {
+        val t = lib ?: error("ADB belum terhubung")
+        t.exec(command)
+    }
 }
