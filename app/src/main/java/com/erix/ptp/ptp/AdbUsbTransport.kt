@@ -112,28 +112,28 @@ class AdbUsbTransport(private val context: Context) {
         }
     }
 
+    // ── PUSH: langsung panggil, exception ditangkap runCatching ──
     suspend fun push(local: File, remotePath: String): Result<Unit> =
         withContext(Dispatchers.IO) {
             runCatching {
                 val d = dadb ?: error("Dadb belum terhubung")
                 require(local.exists()) { "File tidak ada: $local" }
                 DebugLogger.setStatus("⬆ Push ${local.name} → $remotePath")
-                val res = d.push(local, remotePath)
-                if (res is dadb.SyncResult.Failure) error("Push gagal: ${res.reason}")
+                d.push(local, remotePath)   // ✅ langsung, tanpa SyncResult
                 DebugLogger.setStatus("✓ Push selesai: ${local.name}")
             }.also { r ->
                 if (r.isFailure) DebugLogger.setStatus("❌ Push: ${r.exceptionOrNull()?.message}")
             }
         }
 
+    // ── PULL: langsung panggil, exception ditangkap runCatching ──
     suspend fun pull(remotePath: String, local: File): Result<Unit> =
         withContext(Dispatchers.IO) {
             runCatching {
                 val d = dadb ?: error("Dadb belum terhubung")
                 local.parentFile?.mkdirs()
                 DebugLogger.setStatus("⬇ Pull $remotePath → ${local.name}")
-                val res = d.pull(local, remotePath)
-                if (res is dadb.SyncResult.Failure) error("Pull gagal: ${res.reason}")
+                d.pull(local, remotePath)   // ✅ langsung, tanpa SyncResult
                 DebugLogger.setStatus("✓ Pull selesai: ${local.name}")
             }.also { r ->
                 if (r.isFailure) DebugLogger.setStatus("❌ Pull: ${r.exceptionOrNull()?.message}")
