@@ -82,26 +82,26 @@ class AdbNativeTransport(
     }
 
     private fun recvMsg(): Msg {
-        val buf = ByteArray(24 + 65536)
+        val headerBuf = ByteArray(24)
         var read = 0
-        // Baca header 24 byte dulu
         while (read < 24) {
-            val n = bulkRead(buf, 5000) // C++ handle timeout
-            if (n < 0) throw IOException("C++ Read gagal (timeout/stall)")
+            val n = bulkRead(headerBuf, 5000)
+            if (n < 0) throw IOException("C++ Read gagal (err: $n)")
             read += n
-            if (read >= 24) break
         }
-        val bb = ByteBuffer.wrap(buf).order(ByteOrder.LITTLE_ENDIAN)
+        val bb = ByteBuffer.wrap(headerBuf).order(ByteOrder.LITTLE_ENDIAN)
         val cmd = bb.int; val a0 = bb.int; val a1 = bb.int; val len = bb.int; bb.int; bb.int
-        if (len > 0 && len < 65536) {
-            var payloadRead = 0
-            while (payloadRead < len) {
-                val n = bulkRead(buf.copyOfRange(24 + payloadRead, buf.size), 5000)
-                if (n < 0) break
-                payloadRead += n
+        
+        val payload = ByteArray(if (len > 0) len else 0)
+        if (len > 0) {
+            var pRead = 0
+            while (pRead < len) {
+                val n = bulkRead(payload.copyOfRange(pRead, payload.size), 5000)
+                if (n < 0) throw IOException("C++ Payload gagal")
+                pRead += n
             }
         }
-        return Msg(cmd, a0, a1, if (len > 0) buf.copyOfRange(24, 24 + len) else ByteArray(0))
+        return Msg(cmd, a0, a1, payload)
     }
 
     private fun checksum(p: ByteArray): Int { var s = 0; for (b in p) s += (b.toInt() and 0xFF); return s }

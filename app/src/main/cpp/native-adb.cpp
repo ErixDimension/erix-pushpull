@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <cstring>
 #include <fcntl.h>
+#include <errno.h>
 
 #define LOG_TAG "ERIX_NDK"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -13,11 +14,7 @@
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_erix_ptp_ptp_AdbNative_testConnection(JNIEnv *env, jobject thiz, jint fd) {
-    if (fd < 0) {
-        LOGE("Invalid FD: %d", fd);
-        return JNI_FALSE;
-    }
-    LOGI("Menerima USB File Descriptor: %d", fd);
+    if (fd < 0) return JNI_FALSE;
     return JNI_TRUE;
 }
 
@@ -27,24 +24,31 @@ Java_com_erix_ptp_ptp_AdbNative_bulkTransferNative(
         jint fd, jint epAddr, jboolean isIn,
         jbyteArray buffer, jint offset, jint length, jint timeout) {
 
-    // Siapkan buffer C++
+    // Batasi maksimal transfer agar tidak stall (Max 16KB)
+    jint safeLen = length > 16384 ? 16384 : length;
+
     jbyte *buf = env->GetByteArrayElements(buffer, nullptr);
     if (!buf) return -1;
 
-    // Siapkan struct USBDEVFS_BULK untuk ioctl
     struct usbdevfs_bulktransfer bulk;
     bulk.ep = epAddr;
-    bulk.len = length;
+    bulk.len = safeLen;
     bulk.timeout = timeout;
     bulk.data = buf + offset;
 
-    // Jalankan ioctl
     int r = ioctl(fd, USBDEVFS_BULK, &bulk);
-    if (r < 0) {
-        // Catat error jika perlu
+    
+    // Jika error STALL (-EPIPE), bersihkan dan coba lagi sekali
+    if (r < 0 && errno == EPIPE) {
+        LOGI("Endpoint 0x%X stall, clear halt...", epAddr);
+        ioctl(fd, USBDEVFS_CLEAR_HALT, &epAddr);
+        r = ioctl(fd, USBDEVFS_BULK, &bulk);
     }
 
-    // Kembalikan buffer ke Java
+    if (r < 0) {
+        LOGE("ioctl bulk gagal: errno %d", errno);
+    }
+
     env->ReleaseByteArrayElements(buffer, buf, 0);
     return r;
 }
