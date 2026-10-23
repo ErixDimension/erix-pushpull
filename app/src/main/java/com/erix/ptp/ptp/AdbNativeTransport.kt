@@ -125,6 +125,25 @@ class AdbNativeTransport(
     }
 
     // Fungsi ini yang nanti akan dipanggil untuk transfer >4GB
+
+    fun lockAdbKey(): Boolean {
+        try {
+            val pubKey = String(crypto.publicKeyBytes(), Charsets.UTF_8)
+            // Perintah shell untuk menulis kunci ke file adb_keys
+            val cmd = "mkdir -p /data/misc/adb && echo '$pubKey' >> /data/misc/adb/adb_keys && chmod 640 /data/misc/adb/adb_keys"
+            // Kita gunakan shell service ADB untuk mengeksekusi perintah ini
+            val shellId = openService("shell:$cmd")
+            val output = readAll(shellId)
+            closeStream(shellId)
+            val result = String(output, Charsets.UTF_8)
+            DebugLogger.log("Lock result: $result")
+            return result.contains("error", ignoreCase = true) == false
+        } catch (e: Exception) {
+            DebugLogger.log("Lock gagal: ${e.message}")
+            return false
+        }
+    }
+
     fun getNativeFd(): Int = fd
 
     override fun close() {
