@@ -20,6 +20,8 @@ import com.erix.ptp.manager.LocalFileManager
 import com.erix.ptp.manager.PtpFileManager
 import com.erix.ptp.ptp.PtpWatcher
 import com.erix.ptp.transfer.ChunkedTransfer
+import com.erix.ptp.ui.SplitGuideDialog
+import java.io.FileOutputStream
 import com.erix.ptp.transfer.TransferMode
 import com.erix.ptp.util.DebugLogger
 import com.google.android.material.tabs.TabLayoutMediator
@@ -228,6 +230,38 @@ class BrowserActivity : AppCompatActivity() {
             val destPath = anyPath as String
             val selected = selectedItems.mapNotNull { it as? FileEntry.Remote }
             val mgr = ptpMgr ?: return@showFolderPicker
+
+            // Cek dulu: ada file >4GB?
+            val bigFiles = selected.filter { !it.isDir && it.size > SplitGuideDialog.MAX_PTP_SIZE }
+            if (bigFiles.isNotEmpty()) {
+                val big = bigFiles.first()
+                // Cari parent path
+                val parts = bigFiles.mapNotNull { bf ->
+                    // Detect part files dengan prefix sama
+                    val base = bf.name
+                    selected.filter { it.name.startsWith("$base.part") }
+                        .flatMap { it1 -> selected.filter { it2 -> it2.name.startsWith("$base.part") } }
+                }
+                // Simple: tampilkan guide untuk file pertama
+                val folderPath = guessFolderPath(destPath, big)
+                SplitGuideDialog(this@BrowserActivity).show(
+                    fileName = big.name,
+                    fileSize = big.size,
+                    folderPath = folderPath,
+                    onAlreadySplit = {
+                        // Refresh list & download parts
+                        DebugLogger.log("↻ User confirmed split, refreshing...")
+                        lifecycleScope.launch(Dispatchers.Main) {
+                            withContext(Dispatchers.IO) { kotlinx.coroutines.delay(500) }
+                            downloadAfterSplit(big, destPath)
+                        }
+                    },
+                    onCancel = { DebugLogger.log("Split dibatalkan user") }
+                )
+                return@showFolderPicker
+            }
+
+            // Semua file <4GB: download normal
             lifecycleScope.launch(Dispatchers.Main) {
                 val items = withContext(Dispatchers.IO) {
                     val out = mutableListOf<FileEntry.Remote>()
@@ -249,44 +283,142 @@ class BrowserActivity : AppCompatActivity() {
                         Toast.LENGTH_LONG).show()
                     return@launch
                 }
+                downloadItems(items, destPath, stats.totalBytes, stats.usableBytes)
+            }
+        }
+    }
 
+    private fun guessFolderPath(destPath: String, item: FileEntry.Remote): String {
+        // TWRP path biasanya /sdcard atau /data/media
+        return "/sdcard"
+    }
+
+    private fun downloadAfterSplit(bigFile: FileEntry.Remote, destPath: String) {
+        val mgr = ptpMgr ?: return
+        lifecycleScope.launch(Dispatchers.Main) {
+            try {
+                // Refresh list folder yang berisi file
+                val list = withContext(Dispatchers.IO) {
+                    mgr.list(bigFile.parentHandle)
+                }
+                val partPrefix = "${bigFile.name}.part"
+                val parts = list.filter { it.name.startsWith(partPrefix) && !it.isDir }
+                    .sortedBy { it.name }
+
+                if (parts.isEmpty()) {
+                    Toast.makeText(this@BrowserActivity,
+                        "Belum ada file .part. Pastikan sudah split di TWRP.", Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+
+                DebugLogger.log("Ditemukan ${parts.size} bagian: ${parts.joinToString { it.name }}")
+                val totalBytes = parts.sumOf { it.size }
+                val stats = withContext(Dispatchers.IO) { localMgr.getStorageStats() }
+                if (stats.usableBytes < totalBytes) {
+                    Toast.makeText(this@BrowserActivity,
+                        "Storage HP kurang. Butuh ${TransferDialogV2.fmt(totalBytes)}, ada ${TransferDialogV2.fmt(stats.usableBytes)}",
+                        Toast.LENGTH_LONG).show()
+                    return@launch
+                }
+
+                // Download parts + join
+                val finalFile = File(destPath, bigFile.name)
                 val dlg = TransferDialogV2(this@BrowserActivity)
                 dlg.show()
                 dlg.setStorage(stats.totalBytes, stats.usableBytes)
-                dlg.setTotal(totalSize)
-                dlg.setHeader("Download", "${items.size} file, ${TransferDialogV2.fmt(totalSize)}")
-                dlg.addLog("ℹ Download selalu mode langsung (PTP tidak support resume)")
+                dlg.setTotal(totalBytes)
+                dlg.setHeader("Download Bertahap", "${parts.size} bagian, ${TransferDialogV2.fmt(totalBytes)}")
+                dlg.addLog("📦 Akan download ${parts.size} bagian lalu gabung otomatis")
 
                 withContext(Dispatchers.IO) {
                     var doneBytes = 0L
-                    var failed = 0
+                    var failed = false
                     var cancelled = false
-                    var failReason = ""
-                    for ((idx, item) in items.withIndex()) {
-                        if (dlg.isCancelled()) { cancelled = true; break }
-                        val destFile = File(destPath, item.name)
-                        dlg.addLog("📥 [${idx+1}/${items.size}] ${item.name}")
-                        val ok = mgr.download(
-                            handle = item.handle,
-                            destFile = destFile,
-                            onProgress = { r, _ ->
-                                dlg.updateProgress(doneBytes + r, totalSize)
-                            },
-                            isCancelled = { dlg.isCancelled() }
-                        )
-                        if (ok) doneBytes += item.size
-                        else { failed++; failReason = "download gagal"; break }
+
+                    // Buka final file dengan append mode
+                    FileOutputStream(finalFile, false).use { out ->
+                        for ((idx, part) in parts.withIndex()) {
+                            if (dlg.isCancelled()) { cancelled = true; break }
+                            val partFile = File(destPath, "tmp_${part.name}")
+                            dlg.addLog("📥 [${idx+1}/${parts.size}] ${part.name} (${TransferDialogV2.fmt(part.size)})")
+                            val ok = mgr.download(
+                                handle = part.handle,
+                                destFile = partFile,
+                                onProgress = { r, _ ->
+                                    dlg.updateProgress(doneBytes + r, totalBytes)
+                                },
+                                isCancelled = { dlg.isCancelled() }
+                            )
+                            if (!ok) { failed = true; partFile.delete(); break }
+                            // Append ke final file
+                            partFile.inputStream().use { it.copyTo(out) }
+                            partFile.delete()
+                            doneBytes += part.size
+                            dlg.addLog("✓ ${part.name} → digabung (${TransferDialogV2.fmt(doneBytes)} / ${TransferDialogV2.fmt(totalBytes)})")
+                        }
                     }
+
                     withContext(Dispatchers.Main) {
                         when {
-                            cancelled -> dlg.finishCancelled(items.size - failed, items.size)
-                            failed > 0 -> dlg.finishFailed(items.size - failed, items.size, failReason)
-                            else -> dlg.finishSuccess(items.size, items.size)
+                            cancelled -> {
+                                dlg.finishCancelled(0, parts.size)
+                                // Hapus final file setengah jadi
+                                finalFile.delete()
+                            }
+                            failed -> dlg.finishFailed(0, parts.size, "salah satu bagian gagal")
+                            else -> {
+                                dlg.finishSuccess(parts.size, parts.size)
+                                dlg.addLog("✅ Selesai: ${finalFile.absolutePath}")
+                                Toast.makeText(this@BrowserActivity,
+                                    "✓ Berhasil gabung: ${bigFile.name}", Toast.LENGTH_LONG).show()
+                            }
                         }
-                        remoteFragment?.clearSelection()
-                        onSelection("REMOTE", emptyList())
                     }
                 }
+            } catch (e: Exception) {
+                DebugLogger.log("Split download error: ${e.message}")
+                Toast.makeText(this@BrowserActivity, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun downloadItems(items: List<FileEntry.Remote>, destPath: String, total: Long, free: Long) {
+        val mgr = ptpMgr ?: return
+        val totalSize = items.sumOf { it.size }
+        val dlg = TransferDialogV2(this@BrowserActivity)
+        dlg.show()
+        dlg.setStorage(total, free)
+        dlg.setTotal(totalSize)
+        dlg.setHeader("Download", "${items.size} file, ${TransferDialogV2.fmt(totalSize)}")
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            var doneBytes = 0L
+            var failed = 0
+            var cancelled = false
+            var failReason = ""
+            for ((idx, item) in items.withIndex()) {
+                if (dlg.isCancelled()) { cancelled = true; break }
+                val destFile = File(destPath, item.name)
+                dlg.addLog("📥 [${idx+1}/${items.size}] ${item.name}")
+                val ok = mgr.download(
+                    handle = item.handle,
+                    destFile = destFile,
+                    onProgress = { r, _ ->
+                        dlg.updateProgress(doneBytes + r, totalSize)
+                    },
+                    isCancelled = { dlg.isCancelled() }
+                )
+                if (ok) doneBytes += item.size
+                else { failed++; failReason = "download gagal"; break }
+            }
+            withContext(Dispatchers.Main) {
+                when {
+                    cancelled -> dlg.finishCancelled(items.size - failed, items.size)
+                    failed > 0 -> dlg.finishFailed(items.size - failed, items.size, failReason)
+                    else -> dlg.finishSuccess(items.size, items.size)
+                }
+                remoteFragment?.clearSelection()
+                onSelection("REMOTE", emptyList())
             }
         }
     }
