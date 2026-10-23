@@ -2,7 +2,7 @@ plugins { id 'com.android.application'; id 'org.jetbrains.kotlin.android' }
 android {
     namespace 'com.erix.ptp'
     compileSdk 34
-    defaultConfig { applicationId "com.erix.ptp"; minSdk 26; targetSdk 34; versionCode 63; versionName "1.0.63-REWRITE-TRANSPORT" }
+    defaultConfig { applicationId "com.erix.ptp"; minSdk 26; targetSdk 34; versionCode 64; versionName "1.0.64-NAMED-ARGS" }
     buildTypes { debug { signingConfig signingConfigs.debug }; release { minifyEnabled false } }
     signingConfigs { debug { storeFile file('debug.keystore'); storePassword 'android'; keyAlias 'androiddebugkey'; keyPassword 'android' } }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }

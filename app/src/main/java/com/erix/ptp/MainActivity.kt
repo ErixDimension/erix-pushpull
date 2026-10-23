@@ -27,9 +27,7 @@ class MainActivity : AppCompatActivity() {
 
     private val permLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { grants ->
-        grants.forEach { (k, v) -> DebugLogger.log("Izin $k: $v") }
-    }
+    ) { grants -> grants.forEach { (k, v) -> DebugLogger.log("Izin $k: $v") } }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -51,7 +49,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         b.btnTest.setOnClickListener {
-            val t = PtpWatcher.transport ?: run { Toast.makeText(this, "Belum konek", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
+            val t = PtpWatcher.transport ?: run {
+                Toast.makeText(this, "Belum konek", Toast.LENGTH_SHORT).show(); return@setOnClickListener
+            }
             val sid = PtpWatcher.storageId
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
@@ -69,17 +69,24 @@ class MainActivity : AppCompatActivity() {
         }
 
         b.btnPush.setOnClickListener {
-            val t = PtpWatcher.transport ?: run { Toast.makeText(this, "Belum konek", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
+            val t = PtpWatcher.transport ?: run {
+                Toast.makeText(this, "Belum konek", Toast.LENGTH_SHORT).show(); return@setOnClickListener
+            }
             val sid = PtpWatcher.storageId
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
                     val dir = getExternalFilesDir(null) ?: filesDir
                     val f = File(dir, "erix_push_test.txt")
-                    f.writeText("ERIX v55 ${System.currentTimeMillis()}\n")
+                    f.writeText("ERIX v64 ${System.currentTimeMillis()}\n")
                     DebugLogger.log("PUSH ${f.length()}b")
-                    val ok = t.pushToFolder(sid, f, "erix_push_test.txt", -1) { s, total ->
-                        DebugLogger.log("  $s/$total")
-                    }
+                    val ok = t.pushToFolder(
+                        storageId = sid,
+                        localFile = f,
+                        remoteName = "erix_push_test.txt",
+                        parentHandle = -1,
+                        onProgress = { s, tot -> DebugLogger.log("  $s/$tot") },
+                        isCancelled = { false }
+                    )
                     DebugLogger.log(if (ok) "✓ PUSH OK" else "✗ PUSH gagal")
                 } catch (e: Exception) {
                     DebugLogger.log("❌ PUSH: ${e.message}")
@@ -88,16 +95,25 @@ class MainActivity : AppCompatActivity() {
         }
 
         b.btnPull.setOnClickListener {
-            val t = PtpWatcher.transport ?: run { Toast.makeText(this, "Belum konek", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
+            val t = PtpWatcher.transport ?: run {
+                Toast.makeText(this, "Belum konek", Toast.LENGTH_SHORT).show(); return@setOnClickListener
+            }
             val sid = PtpWatcher.storageId
             lifecycleScope.launch(Dispatchers.IO) {
                 try {
                     val list = t.listRoot(sid)
-                    val target = list.firstOrNull { !it.isDir } ?: run { DebugLogger.log("Tidak ada file"); return@launch }
+                    val target = list.firstOrNull { !it.isDir } ?: run {
+                        DebugLogger.log("Tidak ada file"); return@launch
+                    }
                     DebugLogger.log("PULL ${target.name}...")
                     val dir = getExternalFilesDir(null) ?: filesDir
                     val dst = File(dir, "erix_pull_${target.name}")
-                    val ok = t.pullByHandle(target.handle, dst) { r, total -> DebugLogger.log("  $r/$total") }
+                    val ok = t.pullByHandle(
+                        handle = target.handle,
+                        destFile = dst,
+                        onProgress = { r, tot -> DebugLogger.log("  $r/$tot") },
+                        isCancelled = { false }
+                    )
                     DebugLogger.log(if (ok) "✓ PULL OK" else "✗ PULL gagal")
                 } catch (e: Exception) {
                     DebugLogger.log("❌ PULL: ${e.message}")
@@ -119,31 +135,19 @@ class MainActivity : AppCompatActivity() {
 
     private fun requestStoragePermission() {
         val perms = mutableListOf<String>()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
             perms.add(Manifest.permission.POST_NOTIFICATIONS)
-        }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             perms.add(Manifest.permission.READ_EXTERNAL_STORAGE)
             perms.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
         }
         if (perms.isNotEmpty()) permLauncher.launch(perms.toTypedArray())
-
-        // Android 11+ : MANAGE_EXTERNAL_STORAGE (All Files Access)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            if (!Environment.isExternalStorageManager()) {
-                DebugLogger.log("MANAGE_EXTERNAL_STORAGE belum aktif, request...")
-                try {
-                    startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
-                        data = Uri.parse("package:$packageName")
-                    })
-                } catch (_: Exception) {
-                    try {
-                        startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
-                    } catch (_: Exception) {}
-                }
-            } else {
-                DebugLogger.log("✓ MANAGE_EXTERNAL_STORAGE sudah aktif")
-            }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
+            try {
+                startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                    data = Uri.parse("package:$packageName")
+                })
+            } catch (_: Exception) {}
         }
     }
 }

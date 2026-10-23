@@ -15,7 +15,7 @@ class ChunkedTransfer(
 ) {
     companion object {
         const val CHUNK_SIZE = 64L * 1024 * 1024
-        const val THRESHOLD = 100L * 1024 * 1024   // 100MB
+        const val THRESHOLD = 100L * 1024 * 1024
         const val MAX_RETRIES = 3
         const val RETRY_DELAY_MS = 5000L
     }
@@ -41,10 +41,10 @@ class ChunkedTransfer(
 
         val prev = ResumeState.load(ctx, localFile.name)
         val uploaded = if (prev != null && prev.fileSize == totalSize && prev.destHandle == destHandle) {
-            onLog("↻ Resume dari state: ${prev.uploadedChunks.size}/${prev.totalChunks} bagian sudah")
+            onLog("↻ Resume: ${prev.uploadedChunks.size}/${prev.totalChunks} bagian sudah")
             prev.uploadedChunks.toMutableSet()
         } else {
-            mutableSetOf()
+            mutableSetOf<Int>()
         }
 
         var uploadedBytes = uploaded.sumOf { idx ->
@@ -54,11 +54,11 @@ class ChunkedTransfer(
 
         for (chunkIdx in 0 until totalChunks) {
             if (isCancelled()) {
-                onLog("⊘ Dibatalkan oleh user")
+                onLog("⊘ Dibatalkan")
                 return@withContext Result.Cancelled(uploadedBytes)
             }
             if (chunkIdx in uploaded) {
-                onLog("⏭ Bagian ${chunkIdx + 1}/$totalChunks sudah ada, lanjut")
+                onLog("⏭ Bagian ${chunkIdx + 1}/$totalChunks sudah ada")
                 continue
             }
 
@@ -89,17 +89,22 @@ class ChunkedTransfer(
                 while (retry <= MAX_RETRIES && !ok) {
                     try {
                         onLog("📤 Bagian ${chunkIdx + 1}/$totalChunks (${fmt(len)})...")
-                        transport.pushToFolder(storageId, tempChunk, remoteName, destHandle) { sent, _ ->
-                            onProgress(uploadedBytes + sent, totalSize)
-                        }
+                        transport.pushToFolder(
+                            storageId = storageId,
+                            localFile = tempChunk,
+                            remoteName = remoteName,
+                            parentHandle = destHandle,
+                            onProgress = { sent, _ -> onProgress(uploadedBytes + sent, totalSize) },
+                            isCancelled = { isCancelled() }
+                        )
                         ok = true
                     } catch (e: Exception) {
                         retry++
                         if (retry > MAX_RETRIES) {
-                            onLog("❌ Bagian ${chunkIdx + 1} gagal setelah $MAX_RETRIES percobaan")
+                            onLog("❌ Bagian ${chunkIdx + 1} gagal")
                             return@withContext Result.Failed(uploadedBytes, e.message ?: "gagal")
                         }
-                        onLog("⚠ Coba lagi ${retry}/$MAX_RETRIES (5 detik)...")
+                        onLog("⚠ Coba lagi ${retry}/$MAX_RETRIES")
                         delay(RETRY_DELAY_MS)
                     }
                 }
@@ -139,10 +144,17 @@ class ChunkedTransfer(
     ): Result = withContext(Dispatchers.IO) {
         onLog("Mulai upload langsung: ${localFile.name} (${fmt(localFile.length())})")
         try {
-            transport.pushToFolder(storageId, localFile, localFile.name, destHandle) { sent, total ->
-                if (isCancelled()) throw Exception("Dibatalkan user")
-                onProgress(sent, total)
-            }
+            transport.pushToFolder(
+                storageId = storageId,
+                localFile = localFile,
+                remoteName = localFile.name,
+                parentHandle = destHandle,
+                onProgress = { sent, total ->
+                    if (isCancelled()) throw Exception("Dibatalkan user")
+                    onProgress(sent, total)
+                },
+                isCancelled = { isCancelled() }
+            )
             onLog("✅ Upload selesai")
             Result.Success(1)
         } catch (e: Exception) {
