@@ -1,6 +1,7 @@
 package com.erix.ptp.ptp
 
-import android.hardware.usb.*
+import android.hardware.usb.UsbDeviceConnection
+import android.hardware.usb.UsbEndpoint
 import com.erix.ptp.util.DebugLogger
 import java.io.Closeable
 import java.io.IOException
@@ -24,8 +25,9 @@ class AdbNativeTransport(
         const val ADB_AUTH_RSAPUBLICKEY = 3
     }
 
+    private data class Msg(val cmd: Int, val a0: Int, val a1: Int, val payload: ByteArray)
+
     init {
-        // Clear halt kedua endpoint
         try {
             connection.controlTransfer(0x02, 0x01, 0x00, inEp.address, null, 0, 500)
             connection.controlTransfer(0x02, 0x01, 0x00, outEp.address, null, 0, 500)
@@ -72,7 +74,11 @@ class AdbNativeTransport(
         return buffer
     }
 
-    private fun checksum(p: ByteArray): Int { var s = 0; for (b in p) s += (b.toInt() and 0xFF); return s }
+    private fun checksum(p: ByteArray): Int { 
+        var s = 0
+        for (b in p) s += (b.toInt() and 0xFF)
+        return s 
+    }
 
     private fun sendMsg(cmd: Int, a0: Int, a1: Int, payload: ByteArray) {
         val bb = ByteBuffer.allocate(24 + payload.size).order(ByteOrder.LITTLE_ENDIAN)
@@ -81,17 +87,22 @@ class AdbNativeTransport(
         kotlinWrite(bb.array())
     }
 
-    private fun recvMsg(): data class Msg(val cmd: Int, val a0: Int, val a1: Int, val payload: ByteArray) {
+    private fun recvMsg(): Msg {
         val header = kotlinRead(24, 5000)
         val bb = ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN)
-        val cmd = bb.int; val a0 = bb.int; val a1 = bb.int; val len = bb.int; bb.int; bb.int
+        val cmd = bb.int
+        val a0 = bb.int
+        val a1 = bb.int
+        val len = bb.int
+        bb.int // checksum
+        bb.int // magic
         
         val payload = if (len > 0) kotlinRead(len, 5000) else ByteArray(0)
         return Msg(cmd, a0, a1, payload)
     }
 
     fun connect() {
-        DebugLogger.log("[ADB] Mengirim CNXN (AOSP Format)...")
+        DebugLogger.log("[ADB] Mengirim CNXN...")
         val banner = "host::erix\u0000".toByteArray()
         sendMsg(A_CNXN, A_VERSION_MIN, A_MAX_PAYLOAD, banner)
 
@@ -106,13 +117,13 @@ class AdbNativeTransport(
                 }
                 A_AUTH -> {
                     if (msg.a0 == ADB_AUTH_TOKEN) {
-                        DebugLogger.log("🔑 Menerima AUTH Token. Kirim Signature...")
+                        DebugLogger.log("🔑 AUTH Token. Menandatangani...")
                         val sig = crypto.sign(msg.payload)
                         if (sig != null) {
                             sendMsg(A_AUTH, ADB_AUTH_SIGNATURE, 0, sig)
                         } else {
-                            DebugLogger.log("📱 KIRIM PUBLIC KEY (Cek popup TWRP!)")
-                            DebugLogger.setStatus("📱 Izinkan di TWRP!")
+                            DebugLogger.log("📱 SILAKAN KLIK IZINKAN DI LAYAR TWRP!")
+                            DebugLogger.setStatus("📱 Izinkan ADB di TWRP!")
                             sendMsg(A_AUTH, ADB_AUTH_RSAPUBLICKEY, 0, crypto.publicKeyBytes())
                             sendMsg(A_CNXN, A_VERSION_MIN, A_MAX_PAYLOAD, banner)
                         }
