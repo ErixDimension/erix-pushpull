@@ -21,6 +21,7 @@ class PtpUsbTransport(
         const val OP_GET_OBJECT_HANDLES = 0x1007
         const val OP_GET_OBJECT_INFO = 0x1008
         const val OP_GET_OBJECT = 0x1009
+        const val OP_GET_PARTIAL_OBJECT = 0x101B
         const val OP_DELETE_OBJECT = 0x100B
         const val OP_SEND_OBJECT_INFO = 0x100C
         const val OP_SEND_OBJECT = 0x100D
@@ -375,53 +376,63 @@ class PtpUsbTransport(
     ): Boolean {
         val info = getObjectInfo(handle) ?: throw PtpException("Object tidak ada")
         
-        // Tentukan expectedSize. -1L = unlimited (baca sampai RESP)
-        val expectedSize: Long = when {
-            info.size == 0xFFFFFFFFL && info.propSize != null && info.propSize > 0L -> info.propSize
-            info.size == 0xFFFFFFFFL -> -1L // UNLIMITED MODE
-            else -> info.size
+        // Tentukan expectedSize (Gunakan propSize jika ada, jika tidak fallback ke compressedSize)
+        val expectedSize: Long = if (info.propSize != null && info.propSize > 0) info.propSize else info.size
+        if (expectedSize <= 0 || expectedSize == 0xFFFFFFFFL) {
+             throw PtpException("Ukuran file tidak valid/tidak diketahui.")
         }
 
-        txn++
-        sendCommand(OP_GET_OBJECT, intArrayOf(handle))
-
         var success = false
-        val reader = PtpStreamReader()
         try {
             FileOutputStream(destFile).use { out ->
-                var received = 0L
-                var loop = true
-                while (loop) {
+                var offset = 0L
+                val CHUNK_SIZE = 2L * 1024 * 1024 * 1024 // Baca 2GB per potong
+                
+                while (offset < expectedSize) {
                     if (isCancelled()) return false
-                    val hdr = reader.readHeader()
                     
-                    if (hdr.type == TYPE_RESP) {
-                        if (hdr.code != RESP_OK) {
-                            throw PtpException("TWRP error: 0x${hdr.code.toString(16)}")
-                        }
-                        loop = false
-                        break
-                    }
+                    val remain = expectedSize - offset
+                    val currentChunkSize = minOf(remain, CHUNK_SIZE).toInt()
                     
-                    if (hdr.type != TYPE_DATA) throw PtpException("Packet type: ${hdr.type}")
+                    // Panggil OP_GET_PARTIAL_OBJECT
+                    txn++
+                    sendCommand(OP_GET_PARTIAL_OBJECT, intArrayOf(handle, offset.toInt(), currentChunkSize))
                     
-                    var remaining = (hdr.length - 12).toLong()
-                    while (remaining > 0) {
+                    val reader = PtpStreamReader()
+                    var chunkReceived = 0L
+                    
+                    while (chunkReceived < currentChunkSize) {
                         if (isCancelled()) return false
-                        val toRead = minOf(remaining, 65536L).toInt()
-                        val chunk = reader.readBytes(toRead)
-                        out.write(chunk)
-                        received += chunk.size
-                        remaining -= chunk.size
+                        val hdr = reader.readHeader()
                         
-                        // Kalau expectedSize = -1L, kirim total = -1 (unlimited)
-                        onProgress(received, if (expectedSize > 0) expectedSize else -1L)
+                        if (hdr.type == TYPE_RESP) {
+                            if (hdr.code != RESP_OK) throw PtpException("TWRP err: 0x${hdr.code.toString(16)}")
+                            break
+                        }
+                        if (hdr.type != TYPE_DATA) throw PtpException("Packet type: ${hdr.type}")
+                        
+                        var payloadRem = (hdr.length - 12).toLong()
+                        while (payloadRem > 0) {
+                            val toRead = minOf(payloadRem, 65536L).toInt()
+                            val chunk = reader.readBytes(toRead)
+                            out.write(chunk)
+                            
+                            chunkReceived += chunk.size
+                            payloadRem -= chunk.size
+                            
+                            onProgress(offset + chunkReceived, expectedSize)
+                        }
                     }
+                    
+                    offset += chunkReceived
+                    // Jika TWRP mengirim kurang dari currentChunkSize (karena file habis), hentikan loop
+                    if (chunkReceived < currentChunkSize) break
                 }
-                out.flush()
             }
             success = true
             return true
+        } catch (e: Exception) {
+            throw PtpException("Gagal baca potongan: ${e.message}")
         } finally {
             if (!success) drain()
         }
