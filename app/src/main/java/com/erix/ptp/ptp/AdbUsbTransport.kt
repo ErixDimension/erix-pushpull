@@ -79,7 +79,7 @@ class AdbUsbTransport(
     }
 
     // ──────────────────────────────────────────────────────────
-    // [Stage 2a 2026-10-24] Pass-through untuk AdbFileManager.
+    // [Stage 2a-fix3] Pass-through untuk AdbFileManager.
     // ──────────────────────────────────────────────────────────
     /** Jalankan shell command via transport — suspend. */
     suspend fun exec(command: String): String = withContext(Dispatchers.IO) {
