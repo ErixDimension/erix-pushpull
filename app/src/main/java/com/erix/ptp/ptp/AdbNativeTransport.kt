@@ -14,6 +14,31 @@ class AdbNativeTransport(
     private val crypto: AdbCrypto
 ) : Closeable {
 
+    private fun getUsbFd(conn: UsbDeviceConnection): Int {
+        try {
+            // Cara 1: Panggil method getFileDescriptor() via reflection
+            val method = UsbDeviceConnection::class.java.getDeclaredMethod("getFileDescriptor")
+            method.isAccessible = true
+            return method.invoke(conn) as Int
+        } catch (e: Exception) {
+            try {
+                // Cara 2: Fallback cari field mNativeContext (untuk Android lama)
+                val field = UsbDeviceConnection::class.java.getDeclaredField("mNativeContext")
+                field.isAccessible = true
+                return try {
+                    field.getInt(conn)
+                } catch (_: Exception) {
+                    field.getLong(conn).toInt()
+                }
+            } catch (e2: Exception) {
+                throw RuntimeException("Gagal mendapat FD USB: ${e.message} / ${e2.message}")
+            }
+        }
+    }
+
+    private val fd: Int by lazy { getUsbFd(connection) }
+
+
     companion object {
         const val A_CNXN = 0x4e584e43.toInt()
         const val A_AUTH = 0x48545541.toInt()
@@ -33,31 +58,17 @@ class AdbNativeTransport(
     private var nextLocalId = 1
 
     init {
-        // Ambil File Descriptor dari UsbDeviceConnection menggunakan reflection
-        val fdField = UsbDeviceConnection::class.java.getDeclaredField("mNativeContext")
-        fdField.isAccessible = true
-        val fd = fdField.get(connection) as Int
-        
         val ok = AdbNative.testConnection(fd)
         if (!ok) throw IOException("C++ gagal menerima File Descriptor USB")
         DebugLogger.log("[C++] File Descriptor USB diterima.")
     }
 
     private fun bulkWrite(data: ByteArray) {
-        // Ambil FD lagi untuk C++
-        val fdField = UsbDeviceConnection::class.java.getDeclaredField("mNativeContext")
-        fdField.isAccessible = true
-        val fd = fdField.get(connection) as Int
-
         val res = AdbNative.bulkTransferNative(fd, outEp.address, false, data, 0, data.size, 5000)
         if (res < 0) throw IOException("C++ Write gagal: $res")
     }
 
     private fun bulkRead(buffer: ByteArray, timeout: Int): Int {
-        val fdField = UsbDeviceConnection::class.java.getDeclaredField("mNativeContext")
-        fdField.isAccessible = true
-        val fd = fdField.get(connection) as Int
-
         return AdbNative.bulkTransferNative(fd, inEp.address, true, buffer, 0, buffer.size, timeout)
     }
 
