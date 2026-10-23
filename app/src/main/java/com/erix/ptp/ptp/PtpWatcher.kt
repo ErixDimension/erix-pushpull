@@ -121,7 +121,7 @@ object PtpWatcher {
         }
         if (fi == null || fo == null) throw IllegalStateException("Endpoint tidak lengkap")
                 DebugLogger.log("=== v98 LIBUSB ===")
-        val t = AdbNativeTransport(conn, adbIntf, fi, fo, AdbCrypto())
+        val t = AdbNativeTransport(conn, fi, fo, AdbCrypto())
         t.connect()
         adbNative = t
         DebugLogger.setStatus("✓ ADB Terhubung (libusb)")

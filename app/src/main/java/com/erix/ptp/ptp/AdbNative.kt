@@ -7,6 +7,5 @@ object AdbNative {
         catch (t: Throwable) { Log.e("ERIX_NDK", "Load failed: ${t.message}") }
     }
     fun isLoaded(): Boolean = loaded
-    external fun initUsb(fd: Int, intfIndex: Int): Boolean
-    external fun bulkTransfer(epAddr: Int, buffer: ByteArray, offset: Int, length: Int, timeout: Int): Int
+    external fun clearHalt(fd: Int, epAddr: Int): Boolean
 }

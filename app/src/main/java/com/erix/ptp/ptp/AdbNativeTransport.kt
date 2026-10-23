@@ -2,7 +2,6 @@ package com.erix.ptp.ptp
 
 import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbEndpoint
-import android.hardware.usb.UsbInterface
 import com.erix.ptp.util.DebugLogger
 import java.io.Closeable
 import java.io.IOException
@@ -10,8 +9,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 class AdbNativeTransport(
-    connection: UsbDeviceConnection,
-    val usbInterface: UsbInterface,
+    private val connection: UsbDeviceConnection,
     private val inEp: UsbEndpoint,
     private val outEp: UsbEndpoint,
     private val crypto: AdbCrypto
@@ -28,10 +26,11 @@ class AdbNativeTransport(
         val m = UsbDeviceConnection::class.java.getDeclaredMethod("getFileDescriptor")
         m.isAccessible = true
         val fd = m.invoke(connection) as Int
-        DebugLogger.log("[NATIVE] FD=$fd, claim interface ${usbInterface.id} via C++")
-        if (!AdbNative.initUsb(fd, usbInterface.id)) {
-            throw IOException("libusb gagal claim interface")
-        }
+        DebugLogger.log("[NATIVE] FD=$fd")
+        // Clear Halt sebelum mulai
+        val ok1 = AdbNative.clearHalt(fd, inEp.address)
+        val ok2 = AdbNative.clearHalt(fd, outEp.address)
+        DebugLogger.log("[NATIVE] ClearHalt IN=${ok1} OUT=${ok2}")
     }
 
     private fun sendMsg(cmd: Int, a0: Int, a1: Int, payload: ByteArray) {
@@ -39,21 +38,21 @@ class AdbNativeTransport(
         bb.putInt(cmd); bb.putInt(a0); bb.putInt(a1); bb.putInt(payload.size)
         var s = 0; for (b in payload) s += (b.toInt() and 0xFF)
         bb.putInt(s); bb.putInt(cmd xor -1); bb.put(payload)
-        DebugLogger.log("[TX] ${24+payload.size}B cmd=0x${Integer.toHexString(cmd)}")
-        val r = AdbNative.bulkTransfer(outEp.address, bb.array(), 0, 24 + payload.size, 5000)
+        DebugLogger.log("[TX] ${24+payload.size}B")
+        val r = connection.bulkTransfer(outEp, bb.array(), 24 + payload.size, 5000)
         if (r < 0) throw IOException("TX fail (err: $r)")
     }
 
     private fun recvMsg(): ByteArray {
         val buf = ByteArray(65536)
-        val n = AdbNative.bulkTransfer(inEp.address, buf, 0, buf.size, 5000)
+        val n = connection.bulkTransfer(inEp, buf, buf.size, 5000)
         if (n < 0) throw IOException("RX fail (err: $n)")
         DebugLogger.log("[RX] ${n}B")
         return buf.copyOf(n)
     }
 
     fun connect() {
-        DebugLogger.log("[ADB] Sending CNXN...")
+        DebugLogger.log("[ADB] Kirim CNXN...")
         sendMsg(A_CNXN, A_VERSION_MIN, A_MAX_PAYLOAD, "host::erix\u0000".toByteArray())
         var attempts = 0
         while (attempts < 10) {
@@ -63,7 +62,7 @@ class AdbNativeTransport(
             val bb = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
             val cmd = bb.int; val a0 = bb.int; bb.int; val len = bb.int
             when (cmd) {
-                A_CNXN -> { DebugLogger.log("✅ ADB TERHUBUNG (libusb)!"); return }
+                A_CNXN -> { DebugLogger.log("✅ ADB TERHUBUNG!"); return }
                 A_AUTH -> {
                     if (a0 == ADB_AUTH_TOKEN) {
                         DebugLogger.log("🔑 AUTH Token")
@@ -81,7 +80,7 @@ class AdbNativeTransport(
                 else -> DebugLogger.log("⚠ Cmd 0x${Integer.toHexString(cmd)}")
             }
         }
-        throw IOException("Handshake timeout")
+        throw IOException("Timeout")
     }
     override fun close() {}
 }
