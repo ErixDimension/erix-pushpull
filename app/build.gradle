@@ -10,7 +10,7 @@ android {
         }
     }
     compileSdk 34
-    defaultConfig { applicationId "com.erix.ptp"; minSdk 26; targetSdk 34; versionCode 87; versionName "1.0.87-LIBUSB" }
+    defaultConfig { applicationId "com.erix.ptp"; minSdk 26; targetSdk 34; versionCode 88; versionName "1.0.88-LIBUSB-HEADER" }
     buildTypes { debug { signingConfig signingConfigs.debug }; release { minifyEnabled false } }
     signingConfigs { debug { storeFile file('debug.keystore'); storePassword 'android'; keyAlias 'androiddebugkey'; keyPassword 'android' } }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
