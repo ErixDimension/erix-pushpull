@@ -44,6 +44,6 @@ class ConflictResolver(private val transport: AdbUsbTransport) {
             val candidate = File(dir, "$stem ($n)$ext")
             if (!candidate.exists()) return candidate
         }
-        File(dir, "$stem (${System.currentTimeMillis()})$ext")
+        return File(dir, "$stem (${System.currentTimeMillis()})$ext")
     }
 }
