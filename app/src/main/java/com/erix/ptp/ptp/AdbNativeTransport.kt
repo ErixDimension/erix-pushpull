@@ -26,6 +26,17 @@ class AdbNativeTransport(
 
     private val fd: Int by lazy { getUsbFd(connection) }
 
+    init {
+        // PENTING: Bersihkan kedua endpoint dari sisa stall koneksi sebelumnya
+        try {
+            connection.controlTransfer(0x02, 0x01, 0x00, inEp.address, null, 0, 500)
+            connection.controlTransfer(0x02, 0x01, 0x00, outEp.address, null, 0, 500)
+            DebugLogger.log("[ADB] Clear Halt (IN & OUT) berhasil.")
+        } catch (e: Exception) {
+            DebugLogger.log("[ADB] Clear Halt gagal: ${e.message}")
+        }
+    }
+
     private fun getUsbFd(conn: UsbDeviceConnection): Int {
         try {
             val method = UsbDeviceConnection::class.java.getDeclaredMethod("getFileDescriptor")
@@ -42,7 +53,9 @@ class AdbNativeTransport(
     }
 
     private fun kotlinRead(buffer: ByteArray, timeout: Int): Int {
-        return connection.bulkTransfer(inEp, buffer, buffer.size, timeout)
+        // Paksa maksimal 16KB sesuai batasan driver USB Android
+        val safeSize = minOf(buffer.size, 16384)
+        return connection.bulkTransfer(inEp, buffer, safeSize, timeout)
     }
 
     private data class Msg(val cmd: Int, val a0: Int, val a1: Int, val payload: ByteArray)
