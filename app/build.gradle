@@ -42,7 +42,6 @@ tasks.whenTaskAdded { task ->
 
 dependencies {
     implementation "dev.mobile:dadb:1.2.10"
-    implementation "dev.mobile:dadb-android:1.2.10"
     implementation 'androidx.core:core-ktx:1.12.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.7.0'
