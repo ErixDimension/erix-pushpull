@@ -20,46 +20,28 @@ class MainActivity : AppCompatActivity() {
         b = ActivityMainBinding.inflate(layoutInflater)
         setContentView(b.root)
 
-        // Mulai Watcher
         PtpWatcher.start(this)
 
-        // Tampilkan log
         lifecycleScope.launch {
-            DebugLogger.logs.collect { logText ->
-                b.tvLog.text = logText
-            }
+            DebugLogger.logs.collect { b.tvLog.text = it }
         }
         lifecycleScope.launch {
-            DebugLogger.status.collect { status ->
-                b.tvStatus.text = status
-            }
+            DebugLogger.status.collect { b.tvStatus.text = it }
         }
 
-        // Tombol Copy
         b.btnCopy.setOnClickListener {
             val text = b.tvLog.text.toString()
             if (text.isBlank()) {
                 Toast.makeText(this, "Log kosong", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            cm.setPrimaryClip(ClipData.newPlainText("ERIX Log", text))
-            Toast.makeText(this, "✓ Log dicopy!", Toast.LENGTH_SHORT).show()
+            (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
+                .setPrimaryClip(ClipData.newPlainText("ERIX Log", text))
+            Toast.makeText(this, "✓ Log dicopy", Toast.LENGTH_SHORT).show()
         }
 
-        // Tombol Clear
         b.btnClear.setOnClickListener {
             DebugLogger.clear()
-            Toast.makeText(this, "Log dibersihkan", Toast.LENGTH_SHORT).show()
         }
-
-        // Sembunyikan tombol-tombol lama (jika ada di layout) agar tidak crash
-        try {
-            b.btnBrowser.visibility = android.view.View.GONE
-            b.btnTest.visibility = android.view.View.GONE
-            b.btnPush.visibility = android.view.View.GONE
-            b.btnPull.visibility = android.view.View.GONE
-            b.btnExit.visibility = android.view.View.GONE
-        } catch (_: Exception) {}
     }
 }
