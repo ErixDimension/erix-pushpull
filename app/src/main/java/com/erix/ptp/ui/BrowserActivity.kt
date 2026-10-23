@@ -454,7 +454,7 @@ class BrowserActivity : AppCompatActivity() {
         val localMgr2 = LocalFileManager()
 
         fun refreshPath() {
-            tvPath.text = if (isRemote) "/TWRP/" + nameStack.joinToString("/") else currentPath
+            tvPath.text = if (isRemote) "/data/media/0/" + nameStack.joinToString("/") else currentPath
         }
 
         fun loadFolders() {

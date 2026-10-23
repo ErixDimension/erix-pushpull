@@ -54,9 +54,10 @@ class BrowserFragment : Fragment() {
         if (isRemote) {
             ptpMgr = BrowserActivity.ptpMgr
             DebugLogger.log("[REMOTE] ptpMgr=${if (ptpMgr != null) "OK" else "NULL"}")
-            navStack.add(NavSeg("TWRP Root", "-1"))
+            // Path awal diubah ke /data/media/0 sesuai request
+            navStack.add(NavSeg("/data/media/0", "-1"))
         } else {
-            navStack.add(NavSeg("Internal", localMgr.rootPath()))
+            navStack.add(NavSeg("/storage/emulated/0", localMgr.rootPath()))
         }
 
         loadCurrent()
