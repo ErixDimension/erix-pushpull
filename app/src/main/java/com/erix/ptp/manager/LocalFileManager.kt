@@ -1,20 +1,12 @@
 package com.erix.ptp.manager
 
 import com.erix.ptp.data.FileEntry
+import com.erix.ptp.util.PathUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 
-/**
- * LocalFileManager — operasi file lokal device A.
- *
- * Safety guard:
- * - Path "/" ditolak (SELinux Android tidak allow read root, bisa hang di MIUI)
- * - Timeout 10 detik per list (jaga-jaga kalau filesystem freeze)
- * - canRead() check sebelum listFiles()
- * - Try-catch per file, satu file corrupt tidak gagalkan semua
- */
 class LocalFileManager {
 
     companion object {
@@ -37,15 +29,11 @@ class LocalFileManager {
         }
     }
 
-    /**
-     * List isi folder lokal.
-     * Guard: path "/" atau path di luar /storage/ /sdcard/ langsung return empty.
-     * Timeout 10s untuk jaga-jaga kalau filesystem freeze.
-     */
     suspend fun list(path: String): List<FileEntry.Local> = withContext(Dispatchers.IO) {
-        if (!isSafePath(path)) return@withContext emptyList()
+        val cleaned = PathUtil.cleanPath(path)
+        if (!isSafePath(cleaned)) return@withContext emptyList()
 
-        val dir = File(path)
+        val dir = File(cleaned)
         if (!dir.exists() || !dir.isDirectory || !dir.canRead()) {
             return@withContext emptyList()
         }
@@ -80,7 +68,7 @@ class LocalFileManager {
 
     suspend fun copyInto(source: File, destDirPath: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            val destDir = File(destDirPath)
+            val destDir = File(PathUtil.cleanPath(destDirPath))
             destDir.mkdirs()
             val target = File(destDir, source.name)
             val finalTarget = if (target.exists()) uniqueName(destDir, source.name) else target

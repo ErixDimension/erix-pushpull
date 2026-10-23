@@ -3,16 +3,10 @@ package com.erix.ptp.manager
 import com.erix.ptp.data.FileEntry
 import com.erix.ptp.ptp.AdbUsbTransport
 import com.erix.ptp.util.DebugLogger
+import com.erix.ptp.util.PathUtil
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/**
- * AdbFileManager — file listing & info (list, getStorageInfo, walkFolder).
- *
- * Parser ls -la dibuat robust untuk menangani custom ROM (MIUI/HyperOS)
- * yang menambahkan kolom SELinux context. Nama file dicari berdasarkan
- * posisi field waktu (HH:MM), bukan index tetap.
- */
 class AdbFileManager(private val transport: AdbUsbTransport) {
 
     data class StorageInfo(
@@ -26,15 +20,14 @@ class AdbFileManager(private val transport: AdbUsbTransport) {
     private fun stripAnsi(s: String): String =
         s.replace(Regex("\u001B\\[[;\\d]*m"), "")
 
-    /** Resolve /sdcard ke /storage/emulated/0 (hindari symlink di custom ROM). */
     private fun resolvePath(path: String): String {
-        val p = path.trim().removeSuffix("/").ifEmpty { "/" }
+        val cleaned = PathUtil.cleanPath(path)
         return when {
-            p == "/sdcard" -> "/storage/emulated/0"
-            p.startsWith("/sdcard/") -> "/storage/emulated/0" + p.substring("/sdcard".length)
-            p.startsWith("/mnt/sdcard") -> "/storage/emulated/0" + p.substring("/mnt/sdcard".length)
-            p.startsWith("/data/media/0") -> "/storage/emulated/0" + p.substring("/data/media/0".length)
-            else -> p
+            cleaned == "/sdcard" -> "/storage/emulated/0"
+            cleaned.startsWith("/sdcard/") -> "/storage/emulated/0" + cleaned.substring("/sdcard".length)
+            cleaned.startsWith("/mnt/sdcard") -> "/storage/emulated/0" + cleaned.substring("/mnt/sdcard".length)
+            cleaned.startsWith("/data/media/0") -> "/storage/emulated/0" + cleaned.substring("/data/media/0".length)
+            else -> cleaned
         }
     }
 
@@ -60,7 +53,6 @@ class AdbFileManager(private val transport: AdbUsbTransport) {
             DebugLogger.log("[R] parsed 0 dari ${lines.size} baris untuk $normalized")
             DebugLogger.log("[R] sample: ${sample.take(200)}")
         }
-
         parsed
     }
 
@@ -72,7 +64,6 @@ class AdbFileManager(private val transport: AdbUsbTransport) {
         val parts = t.split(Regex("\\s+"))
         if (parts.size < 8) return null
 
-        // Cari index field waktu (HH:MM) — penanda sebelum nama file
         var timeIdx = -1
         for (i in parts.indices.reversed()) {
             if (parts[i].matches(Regex("^\\d{2}:\\d{2}$"))) {
@@ -82,10 +73,11 @@ class AdbFileManager(private val transport: AdbUsbTransport) {
         }
         if (timeIdx < 0 || timeIdx >= parts.size - 1) return null
 
-        val name = parts.drop(timeIdx + 1).joinToString(" ")
+        var name = parts.drop(timeIdx + 1).joinToString(" ")
+        // Bersihkan backslash escaping dari ls
+        name = name.replace(Regex("\\\\(.)"), "$1")
         if (name == "." || name == "..") return null
 
-        // Size = 2 field sebelum tanggal (date time name)
         val sizeStr = parts.getOrNull(timeIdx - 2) ?: "0"
         val size = sizeStr.toLongOrNull() ?: 0L
 
