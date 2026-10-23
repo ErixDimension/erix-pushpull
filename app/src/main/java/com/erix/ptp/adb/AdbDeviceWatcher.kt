@@ -7,21 +7,20 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import com.erix.ptp.util.DebugLogger
-import dadb.AdbKeyPair
-import java.security.KeyPairGenerator
-import java.security.interfaces.RSAPublicKey
-import java.security.interfaces.RSAPrivateKey
-import dadb.Dadb
+import com.flyfishxu.kadb.Kadb
+import com.flyfishxu.kadb.usb.KadbUsb
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 object AdbDeviceWatcher {
     private const val ACTION_USB_PERM = "com.erix.ptp.USB_PERMISSION"
-    @Volatile var dadbInstance: Dadb? = null; private set
+    @Volatile var kadbInstance: Kadb? = null; private set
     private var usbManager: UsbManager? = null
     private var appContext: Context? = null
     private var receiver: BroadcastReceiver? = null
+    private var lastId = -1
+    private var lastTime = 0L
 
     fun start(context: Context) {
         appContext = context.applicationContext
@@ -34,13 +33,16 @@ object AdbDeviceWatcher {
                     UsbManager.ACTION_USB_DEVICE_ATTACHED -> {
                         val device = getDevice(intent)
                         if (device != null) {
+                            val now = System.currentTimeMillis()
+                            if (device.deviceId == lastId && now - lastTime < 1500) return
+                            lastId = device.deviceId; lastTime = now
                             DebugLogger.log("USB Dicolok: ${device.deviceName}")
                             requestPermission(device)
                         }
                     }
                     UsbManager.ACTION_USB_DEVICE_DETACHED -> {
-                        dadbInstance?.close()
-                        dadbInstance = null
+                        kadbInstance?.close()
+                        kadbInstance = null
                         DebugLogger.log("USB Dicabut")
                         DebugLogger.setStatus("Menunggu device...")
                     }
@@ -88,60 +90,20 @@ object AdbDeviceWatcher {
     private fun connect(device: UsbDevice) {
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val manager = usbManager ?: return@launch
+                DebugLogger.log("Membuat KadbUsb...")
+                // API yang benar untuk USB adalah KadbUsb.create(context, device)
+                val kadb = KadbUsb.create(appContext!!, device)
                 
-                // 1. Cari Interface & Endpoint
-                var adbIntf: UsbInterface? = null
-                for (i in 0 until device.interfaceCount) {
-                    val it = device.getInterface(i)
-                    if (it.interfaceClass == 0xFF && it.interfaceSubclass == 0x42 && it.interfaceProtocol == 0x01) {
-                        adbIntf = it; break
-                    }
-                }
-                if (adbIntf == null) throw IllegalStateException("Bukan interface ADB")
+                kadbInstance = kadb
+                DebugLogger.log("✓ KADB TERHUBUNG (USB)!")
+                DebugLogger.setStatus("✓ Kadb Terhubung")
                 
-                var fi: UsbEndpoint? = null; var fo: UsbEndpoint? = null
-                for (i in 0 until adbIntf.endpointCount) {
-                    val ep = adbIntf.getEndpoint(i)
-                    if (ep.type == UsbConstants.USB_ENDPOINT_XFER_BULK) {
-                        if (ep.direction == UsbConstants.USB_DIR_IN) fi = ep
-                        if (ep.direction == UsbConstants.USB_DIR_OUT) fo = ep
-                    }
-                }
-                if (fi == null || fo == null) throw IllegalStateException("Endpoint tidak lengkap")
-
-                // 2. Buka Koneksi
-                val connection = manager.openDevice(device) ?: throw IllegalStateException("openDevice null")
-                if (!connection.claimInterface(adbIntf, true)) throw IllegalStateException("Claim interface gagal")
-
-                // 3. Buat KeyPair (RSA 2048)
-                DebugLogger.log("Membuat RSA KeyPair...")
-                val kpg = KeyPairGenerator.getInstance("RSA")
-                kpg.initialize(2048)
-                val kp = kpg.generateKeyPair()
-                val adbKeyPair = AdbKeyPair(
-                    kp.public as RSAPublicKey,
-                    kp.private as RSAPrivateKey
-                )
-
-                // 4. Buat Source & Sink (Okio)
-                val source = UsbSource(connection, fi)
-                val sink = UsbSink(connection, fo)
-                
-                // 5. Inisialisasi Dadb
-                DebugLogger.log("Membuat Dadb Instance...")
-                val dadb = Dadb.create(source, sink, adbKeyPair)
-                
-                dadbInstance = dadb
-                DebugLogger.log("✓ DADB TERHUBUNG!")
-                DebugLogger.setStatus("✓ Dadb Terhubung")
-                
-                // 5. Test Shell
-                val resp = dadb.shell("echo ERIX_OK").output
+                // Test shell
+                val resp = kadb.shell("echo ERIX_OK").output
                 DebugLogger.log("Shell test: $resp")
 
             } catch (t: Throwable) {
-                DebugLogger.log("❌ Dadb Gagal: ${t.message}")
+                DebugLogger.log("❌ Kadb Gagal: ${t.message}")
                 DebugLogger.setStatus("❌ ${t.message}")
             }
         }

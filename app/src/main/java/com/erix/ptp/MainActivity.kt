@@ -19,12 +19,8 @@ class MainActivity : AppCompatActivity() {
 
         AdbDeviceWatcher.start(this)
 
-        lifecycleScope.launch {
-            DebugLogger.logs.collect { b.tvLog.text = it }
-        }
-        lifecycleScope.launch {
-            DebugLogger.status.collect { b.tvStatus.text = it }
-        }
+        lifecycleScope.launch { DebugLogger.logs.collect { b.tvLog.text = it } }
+        lifecycleScope.launch { DebugLogger.status.collect { b.tvStatus.text = it } }
 
         b.btnClear.setOnClickListener { DebugLogger.clear() }
         b.btnCopy.setOnClickListener {

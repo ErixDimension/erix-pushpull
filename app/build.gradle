@@ -6,8 +6,8 @@ android {
         applicationId "com.erix.ptp"
         minSdk 26
         targetSdk 34
-        versionCode 109
-        versionName "1.0.109-OKIO"
+        versionCode 111
+        versionName "1.0.111-KADB-USB"
     }
     buildTypes {
         debug { signingConfig signingConfigs.debug }
@@ -33,11 +33,10 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.7.0'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.0'
-    
-    // DADB — exclude spake2 (hanya untuk wireless pairing, kita pakai USB)
-    implementation("dev.mobile:dadb:1.2.10")
-    implementation("com.squareup.okio:okio:3.6.0") {
-        exclude group: 'com.github.MuntashirAkon.spake2-java'
-        exclude group: 'com.github.MuntashirAkon'
+    implementation 'com.squareup.okio:okio:3.9.0'
+
+    // KADB — Exclude spake2 (hanya untuk pairing WiFi)
+    implementation("com.flyfishxu:kadb:2.1.5") {
+        exclude group: 'com.github.Flyfish233'
     }
 }
