@@ -45,6 +45,7 @@ class FileAdapter(
         holder.name.text = entry.name
         holder.size.text = when {
             entry.isDir -> if (item.selected) "✓ Folder terpilih" else "Folder (tahan untuk pilih)"
+            entry.size >= 4294967295L -> "> 4 GB"   // Deteksi sentinel / >4GB
             else -> formatSize(entry.size)
         }
 

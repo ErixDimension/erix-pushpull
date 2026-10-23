@@ -103,7 +103,18 @@ class TransferDialogV2(private val ctx: Activity) {
 
     fun setTotal(bytes: Long) {
         totalBytes = bytes; lastBytes = 0; lastTime = 0; lastUiUpdate = 0; emaSpeed = 0.0
-        ctx.runOnUiThread { updateBytes(0) }
+        ctx.runOnUiThread {
+            if (totalBytes <= 0) {
+                // Unlimited mode
+                bar?.isIndeterminate = true
+                tvPercent?.text = "∞"
+                tvStatus?.text = "Mentransfer (ukuran asli tak diketahui)"
+                tvEta?.text = ""
+            } else {
+                bar?.isIndeterminate = false
+                updateBytes(0)
+            }
+        }
     }
 
     fun addLog(line: String) {
@@ -121,7 +132,7 @@ class TransferDialogV2(private val ctx: Activity) {
     fun updateProgress(current: Long, total: Long) {
         if (finished) return
         val now = System.currentTimeMillis()
-        if (now - lastUiUpdate < 250 && current < total) return
+        if (now - lastUiUpdate < 250 && (total <= 0 || current < total)) return
         lastUiUpdate = now
 
         if (lastTime > 0L) {
@@ -136,26 +147,39 @@ class TransferDialogV2(private val ctx: Activity) {
         } else { lastTime = now; lastBytes = current }
 
         ctx.runOnUiThread {
-            val pct = if (total > 0) ((current * 100) / total).toInt() else 0
-            bar?.progress = pct
-            tvPercent?.text = "$pct%"
-            updateBytes(current)
-            tvSpeed?.text = "Kecepatan: " + fmtSpeed(emaSpeed)
-            if (emaSpeed > 0 && current < total) {
-                val remain = total - current
-                tvEta?.text = "Sisa: " + fmtEta((remain / emaSpeed).toLong())
-            } else if (current >= total) {
-                tvEta?.text = "Selesai"
-            } else tvEta?.text = ""
+            if (total <= 0) {
+                // Unlimited
+                tvPercent?.text = "∞"
+                updateBytes(current)
+                tvSpeed?.text = "Kecepatan: " + fmtSpeed(emaSpeed)
+                tvEta?.text = "Sisa: Tidak diketahui"
+                tvStatus?.text = "Mentransfer..."
+            } else {
+                val pct = ((current * 100) / total).toInt()
+                bar?.progress = pct
+                tvPercent?.text = "$pct%"
+                updateBytes(current)
+                tvSpeed?.text = "Kecepatan: " + fmtSpeed(emaSpeed)
+                if (emaSpeed > 0 && current < total) {
+                    tvEta?.text = "Sisa: " + fmtEta(((total - current) / emaSpeed).toLong())
+                } else if (current >= total) {
+                    tvEta?.text = "Selesai"
+                } else tvEta?.text = ""
+            }
         }
     }
 
     fun finishSuccess(filesDone: Int, filesTotal: Int) {
         if (finished) return; finished = true
         ctx.runOnUiThread {
+            bar?.isIndeterminate = false
+            if (totalBytes <= 0) {
+                tvPercent?.text = "✓"
+            } else {
+                bar?.progress = 100; tvPercent?.text = "100%"
+            }
             tvStatus?.text = "✓ Sukses ($filesDone/$filesTotal)"
             tvStatus?.setTextColor(0xFF4CAF50.toInt())
-            bar?.progress = 100; tvPercent?.text = "100%"
             btnCancel?.text = "Tutup"; btnCancel?.isEnabled = true
             btnCancel?.setOnClickListener { dialog?.dismiss() }
         }
@@ -182,8 +206,12 @@ class TransferDialogV2(private val ctx: Activity) {
     }
 
     private fun updateBytes(current: Long) {
-        val remain = (totalBytes - current).coerceAtLeast(0)
-        tvBytes?.text = "${fmt(current)} / ${fmt(totalBytes)}  (${fmt(remain)} sisa)"
+        if (totalBytes <= 0) {
+            tvBytes?.text = "${fmt(current)} terunduh"
+        } else {
+            val remain = (totalBytes - current).coerceAtLeast(0)
+            tvBytes?.text = "${fmt(current)} / ${fmt(totalBytes)}  (${fmt(remain)} sisa)"
+        }
     }
 
     companion object {

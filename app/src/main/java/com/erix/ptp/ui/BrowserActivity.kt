@@ -384,12 +384,18 @@ class BrowserActivity : AppCompatActivity() {
 
     private fun downloadItems(items: List<FileEntry.Remote>, destPath: String, total: Long, free: Long) {
         val mgr = ptpMgr ?: return
-        val totalSize = items.sumOf { it.size }
+        
+        // Cek apakah ada file >4GB (sentinel)
+        val hasUnlimited = items.any { it.size >= 4294967295L }
+        val totalSize = if (hasUnlimited) -1L else items.sumOf { it.size }
+        
         val dlg = TransferDialogV2(this@BrowserActivity)
         dlg.show()
         dlg.setStorage(total, free)
         dlg.setTotal(totalSize)
-        dlg.setHeader("Download", "${items.size} file, ${TransferDialogV2.fmt(totalSize)}")
+        val title = if (hasUnlimited) "Download (>4 GB)" else "Download"
+        val sizeText = if (hasUnlimited) "ukuran asli tak diketahui" else TransferDialogV2.fmt(totalSize)
+        dlg.setHeader(title, "${items.size} file, $sizeText")
 
         lifecycleScope.launch(Dispatchers.IO) {
             var doneBytes = 0L
@@ -408,7 +414,7 @@ class BrowserActivity : AppCompatActivity() {
                     },
                     isCancelled = { dlg.isCancelled() }
                 )
-                if (ok) doneBytes += item.size
+                if (ok) doneBytes += if (item.size >= 4294967295L) 0L else item.size
                 else { failed++; failReason = "download gagal"; break }
             }
             withContext(Dispatchers.Main) {

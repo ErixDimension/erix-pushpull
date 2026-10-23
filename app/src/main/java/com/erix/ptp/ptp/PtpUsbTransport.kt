@@ -377,9 +377,11 @@ class PtpUsbTransport(
         isCancelled: () -> Boolean = { false }
     ): Boolean {
         val info = getObjectInfo(handle) ?: throw PtpException("Object tidak ada")
+        
+        // Tentukan expectedSize. -1L = unlimited (baca sampai RESP)
         val expectedSize: Long = when {
             info.size == 0xFFFFFFFFL && info.propSize != null && info.propSize > 0L -> info.propSize
-            info.size == 0xFFFFFFFFL -> throw PtpException("File >4GB tanpa info size. Perlu split.")
+            info.size == 0xFFFFFFFFL -> -1L // UNLIMITED MODE
             else -> info.size
         }
 
@@ -391,13 +393,21 @@ class PtpUsbTransport(
         try {
             FileOutputStream(destFile).use { out ->
                 var received = 0L
-                while (received < expectedSize) {
+                var loop = true
+                while (loop) {
                     if (isCancelled()) return false
                     val hdr = reader.readHeader()
+                    
                     if (hdr.type == TYPE_RESP) {
-                        throw PtpException("Response dini: 0x${hdr.code.toString(16)}, received=$received/$expectedSize")
+                        if (hdr.code != RESP_OK) {
+                            throw PtpException("TWRP error: 0x${hdr.code.toString(16)}")
+                        }
+                        loop = false
+                        break
                     }
+                    
                     if (hdr.type != TYPE_DATA) throw PtpException("Packet type: ${hdr.type}")
+                    
                     var remaining = (hdr.length - 12).toLong()
                     while (remaining > 0) {
                         if (isCancelled()) return false
@@ -406,16 +416,14 @@ class PtpUsbTransport(
                         out.write(chunk)
                         received += chunk.size
                         remaining -= chunk.size
-                        onProgress(received, expectedSize)
+                        
+                        // Kalau expectedSize = -1L, kirim total = -1 (unlimited)
+                        onProgress(received, if (expectedSize > 0) expectedSize else -1L)
                     }
                 }
                 out.flush()
             }
-            // Baca RESP final DARI reader (bukan bulkTransfer baru)
-            val respHdr = reader.readHeader()
-            if (respHdr.type != TYPE_RESP) throw PtpException("Expected RESP, got type=${respHdr.type}")
-            success = respHdr.code == RESP_OK
-            if (!success) throw PtpException("Final: 0x${respHdr.code.toString(16)}")
+            success = true
             return true
         } finally {
             if (!success) drain()
