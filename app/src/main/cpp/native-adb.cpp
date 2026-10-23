@@ -1,35 +1,67 @@
 #include <jni.h>
 #include <string>
 #include <android/log.h>
-#include "libusb.h"
+#include <linux/usbdevice_fs.h>
+#include <sys/ioctl.h>
+#include <unistd.h>
+#include <cstring>
+#include <fcntl.h>
+#include <errno.h>
 
 #define LOG_TAG "ERIX_NDK"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
-static libusb_context *ctx = nullptr;
-static libusb_device_handle *dev_handle = nullptr;
+static int usb_fd = -1;
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_com_erix_ptp_ptp_AdbNative_initLibusb(JNIEnv *env, jobject thiz, jint fd) {
-    if (!ctx) libusb_init(&ctx);
-    if (dev_handle) libusb_close(dev_handle);
-    int r = libusb_wrap_sys_device(ctx, (intptr_t)fd, &dev_handle);
-    if (r < 0) {
-        LOGE("Gagal wrap FD: %d", r);
-        return JNI_FALSE;
-    }
-    LOGI("libusb berhasil mengambil alih FD");
+Java_com_erix_ptp_ptp_AdbNative_initUsb(JNIEnv *env, jobject thiz, jint fd, jint outEp, jint inEp) {
+    usb_fd = fd;
+    LOGI("initUsb: fd=%d, out=0x%02X, in=0x%02X", fd, outEp, inEp);
+    if (fd < 0) return JNI_FALSE;
+
+    // 1. Reset device (ini yang belum pernah kita coba!)
+    int r = ioctl(fd, USBDEVFS_RESET, 0);
+    LOGI("USBDEVFS_RESET: %d (errno=%d)", r, errno);
+    usleep(200000); // 200ms
+
+    // 2. Reset endpoint IN (clear stall)
+    int ep = inEp;
+    r = ioctl(fd, USBDEVFS_RESETEP, &ep);
+    LOGI("USBDEVFS_RESETEP(IN): %d (errno=%d)", r, errno);
+
+    // 3. Reset endpoint OUT
+    ep = outEp;
+    r = ioctl(fd, USBDEVFS_RESETEP, &ep);
+    LOGI("USBDEVFS_RESETEP(OUT): %d (errno=%d)", r, errno);
+
     return JNI_TRUE;
 }
 
 extern "C" JNIEXPORT jint JNICALL
-Java_com_erix_ptp_ptp_AdbNative_bulkTransfer(JNIEnv *env, jobject thiz, jint epAddr, jbyteArray buffer, jint offset, jint length, jint timeout) {
-    if (!dev_handle) return -1;
+Java_com_erix_ptp_ptp_AdbNative_bulkTransfer(
+        JNIEnv *env, jobject thiz,
+        jint epAddr, jbyteArray buffer, jint offset, jint length, jint timeout) {
+
+    if (usb_fd < 0) {
+        LOGE("bulkTransfer: usb_fd invalid");
+        return -1;
+    }
     jbyte *buf = env->GetByteArrayElements(buffer, nullptr);
-    int actual_length = 0;
-    int r = libusb_bulk_transfer(dev_handle, (unsigned char)epAddr, (unsigned char*)(buf + offset), length, &actual_length, timeout);
+    if (!buf) return -1;
+
+    struct usbdevfs_bulktransfer bulk;
+    bulk.ep = epAddr;
+    bulk.len = length;
+    bulk.timeout = timeout;
+    bulk.data = buf + offset;
+
+    int r = ioctl(usb_fd, USBDEVFS_BULK, &bulk);
+    
+    if (r < 0) {
+        LOGE("bulk ep=0x%02X len=%d: errno=%d (%s)", epAddr, length, errno, strerror(errno));
+    }
+    
     env->ReleaseByteArrayElements(buffer, buf, 0);
-    if (r < 0) return -1;
-    return actual_length;
+    return r;
 }

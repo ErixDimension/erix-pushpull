@@ -9,14 +9,14 @@ object AdbNative {
         try {
             System.loadLibrary("erixadb")
             loaded = true
-            Log.i("ERIX_NDK", "✓ erixadb.so berhasil dimuat")
+            Log.i("ERIX_NDK", "✓ liberixadb.so loaded")
         } catch (t: Throwable) {
-            Log.e("ERIX_NDK", "✗ Gagal load erixadb: ${t.message}")
+            Log.e("ERIX_NDK", "✗ load failed: ${t.message}")
         }
     }
     
     fun isLoaded(): Boolean = loaded
     
-    external fun initLibusb(fd: Int): Boolean
+    external fun initUsb(fd: Int, outEp: Int, inEp: Int): Boolean
     external fun bulkTransfer(epAddr: Int, buffer: ByteArray, offset: Int, length: Int, timeout: Int): Int
 }
