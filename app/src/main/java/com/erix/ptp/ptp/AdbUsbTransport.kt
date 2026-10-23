@@ -11,8 +11,8 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * ADB over USB via Kadb — tidak terkena limit 4GB PTP/MTP.
- * Catatan: perangkat target harus mengaktifkan USB debugging.
+ * ADB over USB via Kadb — bebas limit 4GB PTP/MTP.
+ * Perangkat target WAJIB mengaktifkan USB debugging.
  */
 class AdbUsbTransport(private val context: Context) {
 
@@ -26,7 +26,8 @@ class AdbUsbTransport(private val context: Context) {
 
     suspend fun connect(): Result<Unit> = withContext(Dispatchers.IO) {
         runCatching {
-            val dev = KadbUsb.devices(usbManager).firstOrNull()
+            // ✅ devices(Context), bukan devices(UsbManager)
+            val dev = KadbUsb.devices(context).firstOrNull()
                 ?: error("Tidak ada interface ADB. Aktifkan USB debugging di perangkat target.")
 
             if (!usbManager.hasPermission(dev)) {
@@ -34,7 +35,7 @@ class AdbUsbTransport(private val context: Context) {
             }
 
             DebugLogger.setStatus("Membuka koneksi ADB USB...")
-            val k = KadbUsb.create(context, dev)   // ✅ create(context, device)
+            val k = KadbUsb.create(context, dev)   // ✅ create(Context, UsbDevice)
 
             DebugLogger.setStatus("Menunggu otorisasi ADB (cek layar perangkat)...")
             val pong = k.shell("echo kadb-ok")
