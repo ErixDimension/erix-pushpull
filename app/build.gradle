@@ -2,7 +2,7 @@ plugins { id 'com.android.application'; id 'org.jetbrains.kotlin.android' }
 android {
     namespace 'com.erix.twrp'
     compileSdk 34
-    defaultConfig { applicationId "com.erix.twrp"; minSdk 26; targetSdk 34; versionCode 49; versionName "1.0.49-BUGJAEGER" }
+    defaultConfig { applicationId "com.erix.twrp"; minSdk 26; targetSdk 34; versionCode 50; versionName "1.0.50-USB-REBUILD" }
     buildTypes {
         debug { signingConfig signingConfigs.debug }
         release { minifyEnabled false }

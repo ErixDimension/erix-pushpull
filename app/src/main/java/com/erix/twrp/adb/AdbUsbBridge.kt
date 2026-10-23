@@ -87,7 +87,7 @@ class AdbUsbBridge(
                             write(encode(Msg(AdbProtocol.A_AUTH, AdbProtocol.ADB_AUTH_SIGNATURE, 0, sig)))
                         } else {
                             write(encode(Msg(AdbProtocol.A_AUTH, AdbProtocol.ADB_AUTH_RSAPUBLICKEY, 0, crypto.publicKeyBytes())))
-                            write(encode(Msg(AdbProtocol.A_CNXN, AdbProtocol.A_VERSION_MIN, maxPayload, banner)))
+                            DebugLogger.log("[USB] Public key dikirim; menunggu token AUTH berikutnya")
                         }
                     }
                 }

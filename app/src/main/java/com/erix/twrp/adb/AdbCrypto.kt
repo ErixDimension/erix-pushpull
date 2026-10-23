@@ -25,7 +25,7 @@ class AdbCrypto(private val alias: String = "erix_adb_key") {
     }
 
     fun sign(token: ByteArray): ByteArray? = try {
-        Signature.getInstance("SHA256withRSA").apply {
+        Signature.getInstance("SHA1withRSA").apply {
             initSign(keyPair.private); update(token)
         }.sign()
     } catch (_: Exception) { null }

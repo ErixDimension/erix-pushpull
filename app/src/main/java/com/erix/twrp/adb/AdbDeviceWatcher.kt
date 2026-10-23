@@ -14,6 +14,10 @@ object AdbDeviceWatcher {
     private var receiver: BroadcastReceiver? = null
     private var lastDeviceId = -1
     private var lastAttachTime = 0L
+    @Volatile private var activeBridge: AdbUsbBridge? = null
+    @Volatile private var connecting = false
+    private val connectionLock = Any()
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun start(context: Context) {
         appContext = context.applicationContext
@@ -35,6 +39,8 @@ object AdbDeviceWatcher {
                     }
                     UsbManager.ACTION_USB_DEVICE_DETACHED -> {
                         DebugLogger.log("USB Dicabut")
+                        activeBridge?.close()
+                        activeBridge = null
                         DebugLogger.setStatus("Menunggu device...")
                     }
                     ACTION_USB_PERM -> {
@@ -50,12 +56,12 @@ object AdbDeviceWatcher {
             addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
             addAction(ACTION_USB_PERM)
         }
-        DebugLogger.log("[USB] Watcher aktif; memindai perangkat yang sudah terhubung")
-        scanConnectedDevices()
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
             context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
         else context.registerReceiver(receiver, filter)
+
+        DebugLogger.log("[USB] Watcher aktif; receiver terdaftar")
+        scanConnectedDevices()
     }
 
     private fun scanConnectedDevices() {
@@ -115,33 +121,84 @@ object AdbDeviceWatcher {
     }
 
     private fun connect(device: UsbDevice) {
-        CoroutineScope(Dispatchers.IO).launch {
+        ioScope.launch {
+            var conn: UsbDeviceConnection? = null
+            var bridge: AdbUsbBridge? = null
+
             try {
-                val conn = usbManager!!.openDevice(device) ?: throw IllegalStateException("openDevice null")
+                val mayConnect = synchronized(connectionLock) {
+                    if (activeBridge != null || connecting) {
+                        false
+                    } else {
+                        connecting = true
+                        true
+                    }
+                }
+
+                if (!mayConnect) {
+                    DebugLogger.log("[USB] Koneksi sudah aktif/diproses; abaikan duplikat")
+                    return@launch
+                }
+
+                val manager = usbManager
+                    ?: throw IllegalStateException("UsbManager tidak tersedia")
+
+                conn = manager.openDevice(device)
+                    ?: throw IllegalStateException("openDevice null; periksa izin USB/kabel")
+
                 var adbIntf: UsbInterface? = null
                 for (i in 0 until device.interfaceCount) {
-                    val it = device.getInterface(i)
-                    if (it.interfaceClass == 0xFF && it.interfaceSubclass == 0x42 && it.interfaceProtocol == 0x01) {
-                        adbIntf = it; break
+                    val candidate = device.getInterface(i)
+                    if (candidate.interfaceClass == 0xFF &&
+                        candidate.interfaceSubclass == 0x42 &&
+                        candidate.interfaceProtocol == 0x01) {
+                        adbIntf = candidate
+                        break
                     }
                 }
-                if (adbIntf == null) throw IllegalStateException("Interface ADB tidak ditemukan")
-                var fi: UsbEndpoint? = null; var fo: UsbEndpoint? = null
-                for (i in 0 until adbIntf.endpointCount) {
-                    val ep = adbIntf.getEndpoint(i)
-                    if (ep.type == UsbConstants.USB_ENDPOINT_XFER_BULK) {
-                        if (ep.direction == UsbConstants.USB_DIR_IN) fi = ep
-                        if (ep.direction == UsbConstants.USB_DIR_OUT) fo = ep
+
+                val selectedIntf = adbIntf
+                    ?: throw IllegalStateException("Interface ADB tidak ditemukan")
+
+                var input: UsbEndpoint? = null
+                var output: UsbEndpoint? = null
+
+                for (i in 0 until selectedIntf.endpointCount) {
+                    val endpoint = selectedIntf.getEndpoint(i)
+                    if (endpoint.type == UsbConstants.USB_ENDPOINT_XFER_BULK) {
+                        if (endpoint.direction == UsbConstants.USB_DIR_IN) input = endpoint
+                        if (endpoint.direction == UsbConstants.USB_DIR_OUT) output = endpoint
                     }
                 }
-                if (fi == null || fo == null) throw IllegalStateException("Endpoint tidak lengkap")
-                val bridge = AdbUsbBridge(conn, adbIntf, fi, fo, AdbCrypto())
+
+                val inEndpoint = input
+                    ?: throw IllegalStateException("Endpoint IN tidak ditemukan")
+                val outEndpoint = output
+                    ?: throw IllegalStateException("Endpoint OUT tidak ditemukan")
+
+                bridge = AdbUsbBridge(
+                    conn, selectedIntf, inEndpoint, outEndpoint, AdbCrypto()
+                )
+
+                activeBridge = bridge
                 bridge.connect()
-                DebugLogger.log("✓ SUKSES - TERHUBUNG KE DEVICE B!")
+                conn = null
+                bridge = null
+
+                DebugLogger.log("✓ Handshake ADB berhasil")
                 DebugLogger.setStatus("✓ Terhubung!")
             } catch (e: Exception) {
-                DebugLogger.log("❌ Gagal: ${e.message}")
+                synchronized(connectionLock) {
+                    if (activeBridge === bridge) activeBridge = null
+                }
+                try { bridge?.close() } catch (_: Exception) {}
+                try { conn?.close() } catch (_: Exception) {}
+                DebugLogger.log("❌ Koneksi USB gagal: ${e.message}")
                 DebugLogger.setStatus("❌ ${e.message}")
+            } finally {
+                synchronized(connectionLock) {
+                    connecting = false
+                }
             }
         }
     }
