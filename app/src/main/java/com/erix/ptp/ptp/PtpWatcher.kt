@@ -44,9 +44,15 @@ object PtpWatcher {
                         DebugLogger.setStatus("Menunggu device...")
                     }
                     ACTION_USB_PERM -> {
-                        if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false))
-                            getDevice(intent)?.let { connect(it) }
-                        else DebugLogger.log("Izin USB ditolak")
+                        if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
+                            // Delay 1.5 detik agar popup ke-2 ("Pilih aplikasi") muncul dulu
+                            DebugLogger.log("Izin diberikan. Menunggu popup pemilihan app...")
+                            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                getDevice(intent)?.let { connect(it) }
+                            }, 1500)
+                        } else {
+                            DebugLogger.log("Izin USB ditolak")
+                        }
                     }
                 }
             }

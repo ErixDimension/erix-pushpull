@@ -14,62 +14,35 @@ class AdbNativeTransport(
     private val crypto: AdbCrypto
 ) : Closeable {
 
-    private fun getUsbFd(conn: UsbDeviceConnection): Int {
-        try {
-            // Cara 1: Panggil method getFileDescriptor() via reflection
-            val method = UsbDeviceConnection::class.java.getDeclaredMethod("getFileDescriptor")
-            method.isAccessible = true
-            return method.invoke(conn) as Int
-        } catch (e: Exception) {
-            try {
-                // Cara 2: Fallback cari field mNativeContext (untuk Android lama)
-                val field = UsbDeviceConnection::class.java.getDeclaredField("mNativeContext")
-                field.isAccessible = true
-                return try {
-                    field.getInt(conn)
-                } catch (_: Exception) {
-                    field.getLong(conn).toInt()
-                }
-            } catch (e2: Exception) {
-                throw RuntimeException("Gagal mendapat FD USB: ${e.message} / ${e2.message}")
-            }
-        }
-    }
-
-    private val fd: Int by lazy { getUsbFd(connection) }
-
-
     companion object {
         const val A_CNXN = 0x4e584e43.toInt()
         const val A_AUTH = 0x48545541.toInt()
-        const val A_OPEN = 0x4e45504f.toInt()
-        const val A_OKAY = 0x59414b4f.toInt()
-        const val A_CLSE = 0x45534c43.toInt()
-        const val A_WRTE = 0x45545257.toInt()
-        
         const val A_VERSION_MIN = 0x01000000
         const val A_MAX_PAYLOAD = 4096
-        
         const val ADB_AUTH_TOKEN = 1
         const val ADB_AUTH_SIGNATURE = 2
         const val ADB_AUTH_RSAPUBLICKEY = 3
     }
 
-    private var nextLocalId = 1
+    private val fd: Int by lazy { getUsbFd(connection) }
 
-    init {
-        val ok = AdbNative.testConnection(fd)
-        if (!ok) throw IOException("C++ gagal menerima File Descriptor USB")
-        DebugLogger.log("[C++] File Descriptor USB diterima.")
+    private fun getUsbFd(conn: UsbDeviceConnection): Int {
+        try {
+            val method = UsbDeviceConnection::class.java.getDeclaredMethod("getFileDescriptor")
+            method.isAccessible = true
+            return method.invoke(conn) as Int
+        } catch (e: Exception) {
+            throw RuntimeException("Gagal mendapat FD USB: ${e.message}")
+        }
     }
 
-    private fun bulkWrite(data: ByteArray) {
-        val res = AdbNative.bulkTransferNative(fd, outEp.address, false, data, 0, data.size, 5000)
-        if (res < 0) throw IOException("C++ Write gagal: $res")
+    private fun kotlinWrite(data: ByteArray) {
+        val res = connection.bulkTransfer(outEp, data, data.size, 5000)
+        if (res < 0) throw IOException("Kotlin Write gagal: $res")
     }
 
-    private fun bulkRead(buffer: ByteArray, timeout: Int): Int {
-        return AdbNative.bulkTransferNative(fd, inEp.address, true, buffer, 0, buffer.size, timeout)
+    private fun kotlinRead(buffer: ByteArray, timeout: Int): Int {
+        return connection.bulkTransfer(inEp, buffer, buffer.size, timeout)
     }
 
     private data class Msg(val cmd: Int, val a0: Int, val a1: Int, val payload: ByteArray)
@@ -78,15 +51,15 @@ class AdbNativeTransport(
         val bb = ByteBuffer.allocate(24 + payload.size).order(ByteOrder.LITTLE_ENDIAN)
         bb.putInt(cmd); bb.putInt(a0); bb.putInt(a1); bb.putInt(payload.size)
         bb.putInt(checksum(payload)); bb.putInt(cmd xor -1); bb.put(payload)
-        bulkWrite(bb.array())
+        kotlinWrite(bb.array())
     }
 
     private fun recvMsg(): Msg {
         val headerBuf = ByteArray(24)
         var read = 0
         while (read < 24) {
-            val n = bulkRead(headerBuf, 5000)
-            if (n < 0) throw IOException("C++ Read gagal (err: $n)")
+            val n = kotlinRead(headerBuf, 5000)
+            if (n < 0) throw IOException("Kotlin Read gagal (err: $n)")
             read += n
         }
         val bb = ByteBuffer.wrap(headerBuf).order(ByteOrder.LITTLE_ENDIAN)
@@ -96,8 +69,8 @@ class AdbNativeTransport(
         if (len > 0) {
             var pRead = 0
             while (pRead < len) {
-                val n = bulkRead(payload.copyOfRange(pRead, payload.size), 5000)
-                if (n < 0) throw IOException("C++ Payload gagal")
+                val n = kotlinRead(payload.copyOfRange(pRead, payload.size), 5000)
+                if (pRead < len && n < 0) throw IOException("Kotlin Payload gagal")
                 pRead += n
             }
         }
@@ -107,7 +80,7 @@ class AdbNativeTransport(
     private fun checksum(p: ByteArray): Int { var s = 0; for (b in p) s += (b.toInt() and 0xFF); return s }
 
     fun connect() {
-        DebugLogger.log("[ADB] Mengirim CNXN (Handshake)...")
+        DebugLogger.log("[ADB] Mengirim CNXN (Handshake via Kotlin)...")
         val banner = "host::erix-native\u0000".toByteArray()
         sendMsg(A_CNXN, A_VERSION_MIN, A_MAX_PAYLOAD, banner)
 
@@ -121,13 +94,11 @@ class AdbNativeTransport(
                 }
                 A_AUTH -> {
                     if (msg.a0 == ADB_AUTH_TOKEN) {
-                        DebugLogger.log("🔑 Menerima AUTH Token. Menandatangani...")
+                        DebugLogger.log("🔑 AUTH Token. Menandatangani...")
                         val sig = crypto.sign(msg.payload)
                         if (sig != null) {
-                            // Kirim signature
                             sendMsg(A_AUTH, ADB_AUTH_SIGNATURE, 0, sig)
                         } else {
-                            // Kirim Public Key (Ini yang memicu popup di TWRP!)
                             DebugLogger.log("📱 SILAKAN KLIK IZINKAN DI LAYAR TWRP!")
                             DebugLogger.setStatus("📱 Izinkan ADB di TWRP!")
                             sendMsg(A_AUTH, ADB_AUTH_RSAPUBLICKEY, 0, crypto.publicKeyBytes())
@@ -135,12 +106,13 @@ class AdbNativeTransport(
                         }
                     }
                 }
-                else -> {
-                    DebugLogger.log("⚠ Pesan tak terduga: 0x${Integer.toHexString(msg.cmd)}")
-                }
+                else -> DebugLogger.log("⚠ Pesan: 0x${Integer.toHexString(msg.cmd)}")
             }
         }
     }
+
+    // Fungsi ini yang nanti akan dipanggil untuk transfer >4GB
+    fun getNativeFd(): Int = fd
 
     override fun close() {
         try { connection.close() } catch (_: Exception) {}
