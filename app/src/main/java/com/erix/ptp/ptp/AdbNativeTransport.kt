@@ -2,6 +2,7 @@ package com.erix.ptp.ptp
 
 import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbEndpoint
+import android.hardware.usb.UsbRequest
 import com.erix.ptp.util.DebugLogger
 import java.io.Closeable
 import java.io.IOException
@@ -19,6 +20,7 @@ class AdbNativeTransport(
         const val A_CNXN = 0x4e584e43.toInt(); const val A_AUTH = 0x48545541.toInt()
         const val A_VERSION_MIN = 0x01000000; const val A_MAX_PAYLOAD = 4096
         const val ADB_AUTH_TOKEN = 1; const val ADB_AUTH_SIGNATURE = 2; const val ADB_AUTH_RSAPUBLICKEY = 3
+        const val BUF_SIZE = 16384 // 16 KB max untuk MediaTek
     }
 
     init {
@@ -27,10 +29,8 @@ class AdbNativeTransport(
         m.isAccessible = true
         val fd = m.invoke(connection) as Int
         DebugLogger.log("[NATIVE] FD=$fd")
-        // Clear Halt sebelum mulai
-        val ok1 = AdbNative.clearHalt(fd, inEp.address)
-        val ok2 = AdbNative.clearHalt(fd, outEp.address)
-        DebugLogger.log("[NATIVE] ClearHalt IN=${ok1} OUT=${ok2}")
+        AdbNative.clearHalt(fd, inEp.address)
+        AdbNative.clearHalt(fd, outEp.address)
     }
 
     private fun sendMsg(cmd: Int, a0: Int, a1: Int, payload: ByteArray) {
@@ -41,14 +41,24 @@ class AdbNativeTransport(
         DebugLogger.log("[TX] ${24+payload.size}B")
         val r = connection.bulkTransfer(outEp, bb.array(), 24 + payload.size, 5000)
         if (r < 0) throw IOException("TX fail (err: $r)")
+        Thread.sleep(100) // Delay setelah TX
     }
 
     private fun recvMsg(): ByteArray {
-        val buf = ByteArray(65536)
-        val n = connection.bulkTransfer(inEp, buf, buf.size, 5000)
-        if (n < 0) throw IOException("RX fail (err: $n)")
-        DebugLogger.log("[RX] ${n}B")
-        return buf.copyOf(n)
+        val request = UsbRequest()
+        if (!request.initialize(connection, inEp)) {
+            throw IOException("UsbRequest init gagal")
+        }
+        val buffer = ByteBuffer.allocate(BUF_SIZE)
+        request.queue(buffer, BUF_SIZE)
+
+        // Tunggu request selesai (timeout 5 detik)
+        val completed = connection.requestWait(5000)
+        if (completed == null) throw IOException("RX timeout (UsbRequest)")
+        
+        val data = buffer.array().copyOf(request.readBytes)
+        DebugLogger.log("[RX] ${data.size}B")
+        return data
     }
 
     fun connect() {
@@ -62,7 +72,7 @@ class AdbNativeTransport(
             val bb = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
             val cmd = bb.int; val a0 = bb.int; bb.int; val len = bb.int
             when (cmd) {
-                A_CNXN -> { DebugLogger.log("✅ ADB TERHUBUNG!"); return }
+                A_CNXN -> { DebugLogger.log("✅ ADB TERHUBUNG (UsbRequest)!"); return }
                 A_AUTH -> {
                     if (a0 == ADB_AUTH_TOKEN) {
                         DebugLogger.log("🔑 AUTH Token")
