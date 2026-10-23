@@ -102,9 +102,14 @@ class AdbNativeTransport(
     }
 
     fun connect() {
-        DebugLogger.log("[ADB] Mengirim CNXN...")
-        val banner = "host::erix\u0000".toByteArray()
+        DebugLogger.log("[ADB] Mengirim CNXN (AOSP Features)...")
+        // Banner AOSP lengkap (wajib untuk TWRP modern)
+        val featureList = "host::features=cmd,shell_v2,stat_v2,fixed_push_mkdir,apex,abb,abb_exec,remount_shell,track_app,sendrecv_v2,sendrecv_v2_brotli,sendrecv_v2_lz4,sendrecv_v2_zstd,openscreen_mdns\u0000"
+        val banner = featureList.toByteArray()
         sendMsg(A_CNXN, A_VERSION_MIN, A_MAX_PAYLOAD, banner)
+        
+        DebugLogger.log("[ADB] Menunggu TWRP bangun (500ms)...")
+        Thread.sleep(500) // Beri waktu TWRP memproses banner
 
         var loop = true
         while (loop) {
